@@ -12,6 +12,7 @@ using UnityEditor;
 using UnityEngine.Rendering.HighDefinition;
 #elif UNITY_URP
 using UnityEngine.Rendering.Universal;
+
 #elif UNITY_BUILT_IN
 using UnityEngine.Rendering.PostProcessing;
 #endif
@@ -21,7 +22,6 @@ namespace SkatanicStudios
     [RequireComponent(typeof(PlayerInput))]
     public class Screenshotter : MonoBehaviour
     {
-
         PlayerInput input;
         Camera camera;
 #if UNITY_HDRP || UNITY_URP
@@ -38,7 +38,6 @@ namespace SkatanicStudios
         public Vector2Int screenShotResolution = new Vector2Int(1920, 1080);
         public Color debugTextColor = Color.yellow;
         public int debugFontSize = 30;
-
 
         float speed = 1f;
         float horizontal;
@@ -63,7 +62,7 @@ namespace SkatanicStudios
 #if UNITY_HDRP || UNITY_URP
             volume = gameObject.AddComponent<Volume>();
             volume.priority = 100f;
-            volume.profile = new VolumeProfile();
+            volume.profile = ScriptableObject.CreateInstance<VolumeProfile>();
 
             depthOfField = volume.profile.Add<DepthOfField>(true);
 #if UNITY_HDRP
@@ -84,7 +83,7 @@ namespace SkatanicStudios
         volume.isGlobal = true;
 
         camera.allowHDR = true;
-        
+
         depthOfField = volume.profile.AddSettings<DepthOfField>();
 #endif
         }
@@ -168,8 +167,6 @@ namespace SkatanicStudios
             }
         }
 
-
-
         public void OnPause(InputValue value)
         {
             if (value.Get<float>() == 1)
@@ -184,7 +181,6 @@ namespace SkatanicStudios
                 }
 
                 Time.timeScale = timeScale;
-
             }
         }
 
@@ -211,7 +207,6 @@ namespace SkatanicStudios
 
         private void Update()
         {
-
 #if UNITY_HDRP
         nearStart = depthOfField.nearFocusStart.GetValue<float>();
         nearEnd = depthOfField.nearFocusEnd.GetValue<float>();
@@ -288,37 +283,22 @@ namespace SkatanicStudios
             depthOfField.nearFocusEnd.Override(nearEnd);
             depthOfField.farFocusStart.Override(farStart);
             depthOfField.farFocusEnd.Override(farEnd);
-            
+
 #elif UNITY_URP || UNITY_BUILT_IN
-                focusDistance += vertical * speed;
-                focalLength += horizontal * speed;
-                aperture += lookVertical * speed;
-
-                if (focalLength < 0)
-                {
-                    focalLength = 0;
-                }
-                if (focusDistance < 0)
-                {
-                    focusDistance = 0;
-                }
-                if (aperture < 0.1f)
-                {
-                    aperture = 0.1f;
-                }
-
+                focusDistance = Mathf.Clamp(focusDistance + vertical * speed, 0, float.MaxValue);
+                focalLength = Mathf.Clamp(focalLength + horizontal * speed, 0, float.MaxValue);
+                aperture = Mathf.Clamp(aperture + lookVertical * speed, 0.1f, float.MaxValue);
 
                 depthOfField.focalLength.Override(focalLength);
                 depthOfField.focusDistance.Override(focusDistance);
                 depthOfField.aperture.Override(aperture);
 #endif
-
             }
             else
             {
-
-
-                transform.position = Vector3.Lerp(transform.position, transform.position + (transform.forward * vertical) + (transform.right * horizontal) + (Vector3.up * height), speed);
+                Vector3 targetPosition = transform.position + (transform.forward * vertical) + (transform.right * horizontal) +
+                                         (Vector3.up * height);
+                transform.position = Vector3.Lerp(transform.position, targetPosition, speed);
 
                 transform.Rotate(Vector3.up, lookHorizontal * speed);
 
@@ -338,14 +318,15 @@ namespace SkatanicStudios
             {
                 camera.fieldOfView -= zoomIn;
             }
+
             if (camera.fieldOfView < 100)
             {
                 camera.fieldOfView += zoomOut;
             }
-
         }
 
         public int screenshotCount;
+
         public void TakeScreenshot()
         {
 #if UNITY_EDITOR
@@ -365,7 +346,6 @@ namespace SkatanicStudios
 
         public void TakeNewScreenshot(string fullPath)
         {
-
             if (gameViewScreenshot)
             {
                 ScreenCapture.CaptureScreenshot(fullPath);
@@ -377,14 +357,17 @@ namespace SkatanicStudios
                     camera = GetComponent<Camera>();
                 }
 
+                RenderTexture previousRt = RenderTexture.active;
+                RenderTexture cameraTargetTexture = camera.targetTexture;
                 RenderTexture rt = new RenderTexture(screenShotResolution.x, screenShotResolution.y, 24);
                 camera.targetTexture = rt;
                 Texture2D screenShot = new Texture2D(screenShotResolution.x, screenShotResolution.y, TextureFormat.RGBA32, false);
                 camera.Render();
                 RenderTexture.active = rt;
                 screenShot.ReadPixels(new Rect(0, 0, screenShotResolution.x, screenShotResolution.y), 0, 0);
-                camera.targetTexture = null;
-                RenderTexture.active = null; //added to avoid errors
+
+                camera.targetTexture = cameraTargetTexture;
+                RenderTexture.active = previousRt; //Reassign the active render texture back to the previous one
 
                 if (Application.isEditor)
                 {
@@ -409,9 +392,12 @@ namespace SkatanicStudios
             {
                 string label = "";
 #if UNITY_HDRP
-            label = string.Format("SCREENSHOTTER DEBUG (Y) \nMode {0} (A) \nSpeed {1} (L3)\n\nDEPTH OF FIELD Near = LS, Far = RS)\nNear Start:{2}\nNear End: {3}\nFar Start {4}\nFar End {5}\n\nTime Scale:{6}", (isDOFControl)? "DoF" : "Look", speed, nearStart, nearEnd, farStart, farEnd, Time.timeScale);
+            label =
+ string.Format("SCREENSHOTTER DEBUG (Y) \nMode {0} (A) \nSpeed {1} (L3)\n\nDEPTH OF FIELD Near = LS, Far = RS)\nNear Start:{2}\nNear End: {3}\nFar Start {4}\nFar End {5}\n\nTime Scale:{6}", (isDOFControl)? "DoF" : "Look", speed, nearStart, nearEnd, farStart, farEnd, Time.timeScale);
 #elif UNITY_URP || UNITY_BUILT_IN
-                label = string.Format("SCREENSHOTTER DEBUG (Y) \nMode {0} (A) \nSpeed {1} (L3)\n\nDEPTH OF FIELD Focus Length/Distance = LS, Aperture = RS)\nFocal Distance: {3}\nFocal Narrowness:{2}\nApature {4}f\n\nTime Scale:{5}", (isDOFControl) ? "DoF" : "Look", speed, focalLength, focusDistance, aperture, Time.timeScale);
+                label = string.Format(
+                    "SCREENSHOTTER DEBUG (Y) \nMode {0} (A) \nSpeed {1} (L3)\n\nDEPTH OF FIELD Focus Length/Distance = LS, Aperture = RS)\nFocal Distance: {3}\nFocal Narrowness:{2}\nApature {4}f\n\nTime Scale:{5}",
+                    (isDOFControl) ? "DoF" : "Look", speed, focalLength, focusDistance, aperture, Time.timeScale);
 #endif
                 GUI.skin.label.fontSize = debugFontSize;
                 GUI.contentColor = debugTextColor;
@@ -419,6 +405,5 @@ namespace SkatanicStudios
                 GUI.Label(new Rect(20, 20, Screen.width, Screen.height), label);
             }
         }
-
     }
 }

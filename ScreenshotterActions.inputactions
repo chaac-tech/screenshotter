@@ -1,5 +1,5 @@
 {
-    "name": "InputActions",
+    "name": "ScreenshotterActions",
     "maps": [
         {
             "name": "Main",
@@ -11,7 +11,8 @@
                     "id": "5a4dc71a-18fa-454f-80e9-743a2245e1d2",
                     "expectedControlType": "Vector2",
                     "processors": "",
-                    "interactions": ""
+                    "interactions": "",
+                    "initialStateCheck": true
                 },
                 {
                     "name": "Look",
@@ -19,7 +20,8 @@
                     "id": "2cb8fb3b-725a-4332-bfe8-a667beb94c21",
                     "expectedControlType": "Vector2",
                     "processors": "",
-                    "interactions": ""
+                    "interactions": "",
+                    "initialStateCheck": true
                 },
                 {
                     "name": "ZoomIn",
@@ -27,7 +29,8 @@
                     "id": "79325214-6c38-4dc3-af31-1d9dd0a0f535",
                     "expectedControlType": "Button",
                     "processors": "",
-                    "interactions": ""
+                    "interactions": "",
+                    "initialStateCheck": true
                 },
                 {
                     "name": "ZoomOut",
@@ -35,7 +38,8 @@
                     "id": "6c36cdaf-382d-44a1-b231-08acc323c59f",
                     "expectedControlType": "Button",
                     "processors": "",
-                    "interactions": ""
+                    "interactions": "",
+                    "initialStateCheck": true
                 },
                 {
                     "name": "CameraUp",
@@ -43,7 +47,8 @@
                     "id": "67f168ad-fd72-4278-9961-660dc310bc68",
                     "expectedControlType": "",
                     "processors": "",
-                    "interactions": ""
+                    "interactions": "",
+                    "initialStateCheck": true
                 },
                 {
                     "name": "CameraDown",
@@ -51,7 +56,8 @@
                     "id": "199a2401-9772-4b9f-b4af-c8255075157d",
                     "expectedControlType": "",
                     "processors": "",
-                    "interactions": ""
+                    "interactions": "",
+                    "initialStateCheck": true
                 },
                 {
                     "name": "ToggleDebug",
@@ -59,7 +65,8 @@
                     "id": "05e6e469-8eee-48fe-a44d-ba56ddeaa02c",
                     "expectedControlType": "Button",
                     "processors": "",
-                    "interactions": ""
+                    "interactions": "",
+                    "initialStateCheck": true
                 },
                 {
                     "name": "ToggleControls",
@@ -67,7 +74,8 @@
                     "id": "1535af09-9610-4800-ba64-a442a11a47db",
                     "expectedControlType": "Button",
                     "processors": "",
-                    "interactions": ""
+                    "interactions": "",
+                    "initialStateCheck": true
                 },
                 {
                     "name": "ToggleSpeed",
@@ -75,7 +83,8 @@
                     "id": "ff9be773-47ce-494e-b549-29983f24c4ac",
                     "expectedControlType": "Button",
                     "processors": "",
-                    "interactions": ""
+                    "interactions": "",
+                    "initialStateCheck": true
                 },
                 {
                     "name": "Screenshot",
@@ -83,7 +92,8 @@
                     "id": "8dd2069c-5744-4e03-a448-b4d15bd2cdb5",
                     "expectedControlType": "",
                     "processors": "",
-                    "interactions": ""
+                    "interactions": "",
+                    "initialStateCheck": false
                 },
                 {
                     "name": "Pause",
@@ -91,7 +101,8 @@
                     "id": "ffb5a334-7ac9-48bf-94b3-2dcc78d428d1",
                     "expectedControlType": "",
                     "processors": "",
-                    "interactions": ""
+                    "interactions": "",
+                    "initialStateCheck": false
                 },
                 {
                     "name": "Next",
@@ -99,7 +110,8 @@
                     "id": "554cc222-4180-423c-94a4-698a731467b3",
                     "expectedControlType": "",
                     "processors": "",
-                    "interactions": ""
+                    "interactions": "",
+                    "initialStateCheck": false
                 },
                 {
                     "name": "Previous",
@@ -107,7 +119,8 @@
                     "id": "35cdb37d-3d45-43fd-b33b-b503f4bcd471",
                     "expectedControlType": "",
                     "processors": "",
-                    "interactions": ""
+                    "interactions": "",
+                    "initialStateCheck": false
                 }
             ],
             "bindings": [

@@ -1,21 +1,25 @@
 {
-    "name":"com.skatanicstudios.screenshotter",
-    "displayName":"Screenshotter",
-    "version":"1.0.3",
-    "unity":"2019.1",
-    "description":"Tool for taking promotional screen-shots in the Unity Editor using a Gamepad.",
-    "keywords":[
-        "screenshot", 
-        "input",
-        "gamepad",
-        "camera"
-    ],
-    "dependencies":{
-        "com.unity.inputsystem":"1.0.0-preview.4"
-    },
-    "author": {
+  "name": "com.skatanicstudios.screenshotter",
+  "displayName": "Screenshotter",
+  "version": "1.0.3",
+  "unity": "2019.1",
+  "description": "Tool for taking promotional screen-shots in the Unity Editor using a Gamepad.",
+  "keywords": [
+    "screenshot",
+    "input",
+    "gamepad",
+    "camera"
+  ],
+  "dependencies": {
+    "com.unity.inputsystem": "1.0.0-preview.4"
+  },
+  "author": {
     "name": "Matt Gambell",
     "email": "matt@skatanicstudios.co.uk",
     "url": "https://www.skatanicstudios.co.uk"
-    }
+  },
+  "publishConfig": {
+    "registry": "https://package.openupm.com"
+  },
+  "_fingerprint": "5bef7c36a6a437003923998b8586884d67b38b93"
 }
