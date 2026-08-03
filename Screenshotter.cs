@@ -36,8 +36,16 @@ namespace SkatanicStudios
         public bool invertLook;
         public bool gameViewScreenshot = true;
         public Vector2Int screenShotResolution = new Vector2Int(1920, 1080);
-        public Color debugTextColor = Color.yellow;
-        public int debugFontSize = 30;
+        [HideInInspector] public Color debugTextColor = Color.yellow;
+        [HideInInspector] public int debugFontSize = 30;
+
+        [SerializeField, Range(0.01f, 0.2f)] internal float mouseLookSensitivity = 0.05f;
+        [SerializeField, Range(10f, 360f)] internal float gamepadLookSpeed = 90f;
+        [SerializeField, Range(0.1f, 10f)] internal float dofAdjustmentSpeed = 1f;
+        [SerializeField, Range(0.01f, 0.5f)] internal float scrollMovementSpeedSensitivity = 0.1f;
+        [SerializeField, Range(0.5f, 10f)] internal float scrollZoomSensitivity = 3f;
+        [SerializeField, Range(0.1f, 4f)] internal float scrollApertureSensitivity = 0.5f;
+        [SerializeField] internal Vector2 controlPanelReferenceResolution = new Vector2(1920, 1080);
 
         float speed = 1f;
         float horizontal;
@@ -47,14 +55,26 @@ namespace SkatanicStudios
         float lookHorizontal;
         float zoomIn;
         float zoomOut;
-        bool showDebug = true;
+        bool showControlPanel = true;
         bool isDOFControl;
         float timeScale = 1;
+        bool cursorCaptured;
+        bool captureBlockedUntilRightButtonRelease;
+        CursorLockMode previousCursorLockMode;
+        bool previousCursorVisible;
+        Rect controlPanelRect = new Rect(20, 20, 380, 560);
+        GUISkin controlPanelSkin;
+        string screenshotWidthText;
+        string screenshotHeightText;
+
+        const string KeyboardMouseControlScheme = "Keyboard&Mouse";
 
         private void Awake()
         {
             camera = GetComponent<Camera>();
             input = GetComponent<PlayerInput>();
+            screenshotWidthText = screenShotResolution.x.ToString();
+            screenshotHeightText = screenShotResolution.y.ToString();
 
 
             //Make this the camera in focus
@@ -86,6 +106,18 @@ namespace SkatanicStudios
 
         depthOfField = volume.profile.AddSettings<DepthOfField>();
 #endif
+
+#if UNITY_HDRP
+            nearStart = depthOfField.nearFocusStart.GetValue<float>();
+            nearEnd = depthOfField.nearFocusEnd.GetValue<float>();
+            farStart = depthOfField.farFocusStart.GetValue<float>();
+            farEnd = depthOfField.farFocusEnd.GetValue<float>();
+            aperture = camera.aperture;
+#elif UNITY_URP || UNITY_BUILT_IN
+            focusDistance = depthOfField.focusDistance.GetValue<float>();
+            focalLength = depthOfField.focalLength.GetValue<float>();
+            aperture = depthOfField.aperture.GetValue<float>();
+#endif
         }
 
         public void OnMove(InputValue value)
@@ -112,19 +144,25 @@ namespace SkatanicStudios
 
         public void OnCameraUp(InputValue value)
         {
-            height = value.Get<float>() * speed;
+            height = value.Get<float>();
         }
 
         public void OnCameraDown(InputValue value)
         {
-            height = value.Get<float>() * -speed;
+            height = value.Get<float>() * -1;
         }
 
         public void OnToggleDebug(InputValue value)
         {
             if (value.Get<float>() == 1)
             {
-                showDebug = !showDebug;
+                showControlPanel = !showControlPanel;
+                if (showControlPanel)
+                {
+                    ReleaseCursor();
+                    Cursor.lockState = CursorLockMode.None;
+                    Cursor.visible = true;
+                }
             }
         }
 
@@ -133,6 +171,10 @@ namespace SkatanicStudios
             if (value.Get<float>() == 1)
             {
                 isDOFControl = !isDOFControl;
+                if (isDOFControl)
+                {
+                    ReleaseCursor();
+                }
             }
         }
 
@@ -171,15 +213,7 @@ namespace SkatanicStudios
         {
             if (value.Get<float>() == 1)
             {
-                if (timeScale == 0)
-                {
-                    timeScale = 1;
-                }
-                else
-                {
-                    timeScale = 0;
-                }
-
+                timeScale = Mathf.Approximately(Time.timeScale, 0) ? 1 : 0;
                 Time.timeScale = timeScale;
             }
         }
@@ -195,10 +229,11 @@ namespace SkatanicStudios
         }
 
 #if UNITY_HDRP
-    float nearStart;
-    float nearEnd;
-    float farStart;
-    float farEnd;
+        float nearStart;
+        float nearEnd;
+        float farStart;
+        float farEnd;
+        float aperture;
 #elif UNITY_URP || UNITY_BUILT_IN
         float focusDistance;
         float focalLength;
@@ -207,87 +242,125 @@ namespace SkatanicStudios
 
         private void Update()
         {
-#if UNITY_HDRP
-        nearStart = depthOfField.nearFocusStart.GetValue<float>();
-        nearEnd = depthOfField.nearFocusEnd.GetValue<float>();
-        farStart = depthOfField.farFocusStart.GetValue<float>();
-        farEnd = depthOfField.farFocusEnd.GetValue<float>();
-#elif UNITY_URP || UNITY_BUILT_IN
+            UpdateCursorCapture();
 
-            focusDistance = depthOfField.focusDistance.GetValue<float>();
-            focalLength = depthOfField.focalLength.GetValue<float>();
-            aperture = depthOfField.aperture.GetValue<float>();
-#endif
+            float moveHorizontal = horizontal;
+            float moveVertical = vertical;
+            float activeLookHorizontal = lookHorizontal;
+            float activeLookVertical = lookVertical;
+            float scroll = zoomIn - zoomOut;
+            bool usingKeyboardMouse = IsUsingKeyboardMouse();
+            float unscaledFrameRate = Time.unscaledDeltaTime * 60f;
+
+            if (usingKeyboardMouse)
+            {
+                if (cursorCaptured)
+                {
+                    activeLookHorizontal *= mouseLookSensitivity;
+                    activeLookVertical *= mouseLookSensitivity;
+                }
+                else
+                {
+                    activeLookHorizontal = 0;
+                    activeLookVertical = 0;
+                }
+
+                if (showControlPanel && !cursorCaptured && IsPointerOverControlPanel())
+                {
+                    scroll = 0;
+                }
+            }
+
+            if (!isDOFControl && usingKeyboardMouse && cursorCaptured && !Mathf.Approximately(scroll, 0))
+            {
+                speed = Mathf.Clamp(speed + scroll * scrollMovementSpeedSensitivity, 0.1f, 2f);
+                scroll = 0;
+            }
 
             if (isDOFControl)
             {
-                if (Mathf.Abs(vertical) < 0.25f)
+                if (Mathf.Abs(moveVertical) < 0.25f)
                 {
-                    vertical = 0;
+                    moveVertical = 0;
                 }
 
-                if (Mathf.Abs(horizontal) < 0.25f)
+                if (Mathf.Abs(moveHorizontal) < 0.25f)
                 {
-                    horizontal = 0;
+                    moveHorizontal = 0;
                 }
 
-                if (Mathf.Abs(lookHorizontal) < 0.25f)
+                if (Mathf.Abs(activeLookHorizontal) < 0.25f)
                 {
-                    lookHorizontal = 0;
+                    activeLookHorizontal = 0;
                 }
 
-                if (Mathf.Abs(lookVertical) < 0.25f)
+                if (Mathf.Abs(activeLookVertical) < 0.25f)
                 {
-                    lookVertical = 0;
+                    activeLookVertical = 0;
                 }
 #if UNITY_HDRP
-            float nearFocusStart = vertical * speed;
-            float nearFocusEnd = horizontal * speed;
+                float dofStep = dofAdjustmentSpeed * unscaledFrameRate;
+                float nearFocusStart = moveVertical * dofStep;
+                float nearFocusEnd = moveHorizontal * dofStep;
 
-            float farFocusStart = lookVertical * speed;
-            float farFocusEnd = lookHorizontal * speed;
+                float farFocusStart = usingKeyboardMouse ? 0 : activeLookVertical * dofStep;
+                float farFocusEnd = usingKeyboardMouse ? 0 : activeLookHorizontal * dofStep;
 
-            nearStart += nearFocusStart;
-            nearEnd += nearFocusEnd;
-            farStart += farFocusStart;
-            farEnd += farFocusEnd;
+                nearStart += nearFocusStart;
+                nearEnd += nearFocusEnd;
+                farStart += farFocusStart;
+                farEnd += farFocusEnd;
             
-            if (nearStart > nearEnd)
-            {
-                nearEnd = nearStart;
-            }
-            if (farStart > farEnd)
-            {
-                farEnd = farStart;
-            }
+                if (nearStart > nearEnd)
+                {
+                    nearEnd = nearStart;
+                }
+                if (farStart > farEnd)
+                {
+                    farEnd = farStart;
+                }
 
+                if (farStart < 0)
+                {
+                    farStart = 0;
+                }
+                if (nearStart < 0)
+                {
+                    nearStart = 0;
+                }
+                if (farEnd < 0)
+                {
+                    farEnd = 0;
+                }
+                if (nearEnd < 0)
+                {
+                    nearEnd = 0;
+                }
 
-            if (farStart < 0)
-            {
-                farStart = 0;
-            }
-            if (nearStart < 0)
-            {
-                nearStart = 0;
-            }
-            if (farEnd < 0)
-            {
-                farEnd = 0;
-            }
-            if(nearEnd < 0)
-            {
-                nearEnd = 0;
-            }
+                depthOfField.nearFocusStart.Override(nearStart);
+                depthOfField.nearFocusEnd.Override(nearEnd);
+                depthOfField.farFocusStart.Override(farStart);
+                depthOfField.farFocusEnd.Override(farEnd);
 
-            depthOfField.nearFocusStart.Override(nearStart);
-            depthOfField.nearFocusEnd.Override(nearEnd);
-            depthOfField.farFocusStart.Override(farStart);
-            depthOfField.farFocusEnd.Override(farEnd);
+                if (usingKeyboardMouse && !Mathf.Approximately(scroll, 0))
+                {
+                    aperture = Mathf.Clamp(aperture + scroll * scrollApertureSensitivity, 0.7f, 32f);
+                    camera.aperture = aperture;
+                }
 
 #elif UNITY_URP || UNITY_BUILT_IN
-                focusDistance = Mathf.Clamp(focusDistance + vertical * speed, 0, float.MaxValue);
-                focalLength = Mathf.Clamp(focalLength + horizontal * speed, 0, float.MaxValue);
-                aperture = Mathf.Clamp(aperture + lookVertical * speed, 0.1f, float.MaxValue);
+                float dofStep = dofAdjustmentSpeed * unscaledFrameRate;
+                focusDistance = Mathf.Clamp(focusDistance + moveVertical * dofStep, 0, float.MaxValue);
+                focalLength = Mathf.Clamp(focalLength + moveHorizontal * dofStep, 0, float.MaxValue);
+
+                if (usingKeyboardMouse)
+                {
+                    aperture = Mathf.Clamp(aperture + scroll * scrollApertureSensitivity, 0.1f, 32f);
+                }
+                else
+                {
+                    aperture = Mathf.Clamp(aperture + activeLookVertical * dofStep, 0.1f, 32f);
+                }
 
                 depthOfField.focalLength.Override(focalLength);
                 depthOfField.focusDistance.Override(focusDistance);
@@ -296,32 +369,138 @@ namespace SkatanicStudios
             }
             else
             {
-                Vector3 targetPosition = transform.position + (transform.forward * vertical) + (transform.right * horizontal) +
-                                         (Vector3.up * height);
-                transform.position = Vector3.Lerp(transform.position, targetPosition, speed);
+                Vector3 movement = (transform.forward * moveVertical) + (transform.right * moveHorizontal) +
+                                   (Vector3.up * height);
+                transform.position += movement * speed * unscaledFrameRate;
 
-                transform.Rotate(Vector3.up, lookHorizontal * speed);
+                float lookMultiplier = usingKeyboardMouse ? 1 : gamepadLookSpeed * Time.unscaledDeltaTime;
+                transform.Rotate(Vector3.up, activeLookHorizontal * lookMultiplier);
 
                 if (invertLook)
                 {
-                    transform.Rotate(Vector3.right, lookVertical * speed);
+                    transform.Rotate(Vector3.right, activeLookVertical * lookMultiplier);
                 }
                 else
                 {
-                    transform.Rotate(Vector3.right, -lookVertical * speed);
+                    transform.Rotate(Vector3.right, -activeLookVertical * lookMultiplier);
                 }
 
                 transform.rotation = Quaternion.Euler(transform.rotation.eulerAngles.x, transform.rotation.eulerAngles.y, 0);
             }
 
-            if (camera.fieldOfView > 0)
+            if (!isDOFControl && !Mathf.Approximately(scroll, 0))
             {
-                camera.fieldOfView -= zoomIn;
+                camera.fieldOfView = Mathf.Clamp(camera.fieldOfView - scroll * scrollZoomSensitivity, 1, 100);
+            }
+        }
+
+        internal bool IsUsingKeyboardMouse()
+        {
+            return input != null && input.currentControlScheme == KeyboardMouseControlScheme;
+        }
+
+        internal void UpdateCursorCapture()
+        {
+            Mouse mouse = Mouse.current;
+            if (!IsUsingKeyboardMouse() || mouse == null || isDOFControl)
+            {
+                ReleaseCursor();
+                return;
             }
 
-            if (camera.fieldOfView < 100)
+            if (!mouse.rightButton.isPressed)
             {
-                camera.fieldOfView += zoomOut;
+                captureBlockedUntilRightButtonRelease = false;
+            }
+
+            if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+            {
+                captureBlockedUntilRightButtonRelease = true;
+                ReleaseCursor();
+                return;
+            }
+
+            bool pointerOverPanel = !cursorCaptured && IsPointerOverControlPanel();
+            if (mouse.rightButton.isPressed && !captureBlockedUntilRightButtonRelease && !pointerOverPanel)
+            {
+                CaptureCursor();
+            }
+            else
+            {
+                ReleaseCursor();
+            }
+        }
+
+        internal void CaptureCursor()
+        {
+            if (cursorCaptured)
+            {
+                return;
+            }
+
+            previousCursorLockMode = Cursor.lockState;
+            previousCursorVisible = Cursor.visible;
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+            cursorCaptured = true;
+        }
+
+        internal void ReleaseCursor()
+        {
+            if (!cursorCaptured)
+            {
+                return;
+            }
+
+            Cursor.lockState = previousCursorLockMode;
+            Cursor.visible = previousCursorVisible;
+            cursorCaptured = false;
+        }
+
+        internal bool IsPointerOverControlPanel()
+        {
+            if (!showControlPanel || Mouse.current == null)
+            {
+                return false;
+            }
+
+            float scale = GetControlPanelScale();
+            Vector2 mousePosition = Mouse.current.position.ReadValue();
+            mousePosition.x /= scale;
+            mousePosition.y = (Screen.height - mousePosition.y) / scale;
+            return controlPanelRect.Contains(mousePosition);
+        }
+
+        internal float GetControlPanelScale()
+        {
+            float referenceWidth = Mathf.Max(1, controlPanelReferenceResolution.x);
+            float referenceHeight = Mathf.Max(1, controlPanelReferenceResolution.y);
+            return Mathf.Max(0.01f, Mathf.Min(Screen.width / referenceWidth, Screen.height / referenceHeight));
+        }
+
+        private void OnApplicationFocus(bool hasFocus)
+        {
+            if (!hasFocus)
+            {
+                captureBlockedUntilRightButtonRelease = true;
+                ReleaseCursor();
+            }
+        }
+
+        private void OnDisable()
+        {
+            ReleaseCursor();
+
+            if (controlPanelSkin != null)
+            {
+                if (Application.isPlaying)
+                {
+                    Destroy(controlPanelSkin);
+                }
+                else
+                {
+                    DestroyImmediate(controlPanelSkin);
+                }
             }
         }
 
@@ -333,6 +512,11 @@ namespace SkatanicStudios
             string time = string.Format("{0}_{1}_{2}", System.DateTime.Now.Year, System.DateTime.Now.Month, System.DateTime.Now.Day);
             string name = string.Format("{0}_{1}_shot_{2}", time, Application.productName, screenshotCount).ToLower();
             string fullpathname = EditorUtility.SaveFilePanel("Save Screenshot", "", name, "png");
+            if (string.IsNullOrEmpty(fullpathname))
+            {
+                return;
+            }
+
             TakeNewScreenshot(fullpathname);
             screenshotCount++;
 #endif
@@ -388,22 +572,152 @@ namespace SkatanicStudios
 
         private void OnGUI()
         {
-            if (showDebug)
+            if (!showControlPanel)
             {
-                string label = "";
-#if UNITY_HDRP
-            label =
- string.Format("SCREENSHOTTER DEBUG (Y) \nMode {0} (A) \nSpeed {1} (L3)\n\nDEPTH OF FIELD Near = LS, Far = RS)\nNear Start:{2}\nNear End: {3}\nFar Start {4}\nFar End {5}\n\nTime Scale:{6}", (isDOFControl)? "DoF" : "Look", speed, nearStart, nearEnd, farStart, farEnd, Time.timeScale);
-#elif UNITY_URP || UNITY_BUILT_IN
-                label = string.Format(
-                    "SCREENSHOTTER DEBUG (Y) \nMode {0} (A) \nSpeed {1} (L3)\n\nDEPTH OF FIELD Focus Length/Distance = LS, Aperture = RS)\nFocal Distance: {3}\nFocal Narrowness:{2}\nApature {4}f\n\nTime Scale:{5}",
-                    (isDOFControl) ? "DoF" : "Look", speed, focalLength, focusDistance, aperture, Time.timeScale);
-#endif
-                GUI.skin.label.fontSize = debugFontSize;
-                GUI.contentColor = debugTextColor;
-
-                GUI.Label(new Rect(20, 20, Screen.width, Screen.height), label);
+                return;
             }
+
+            float scale = GetControlPanelScale();
+            Matrix4x4 previousMatrix = GUI.matrix;
+            GUISkin previousSkin = GUI.skin;
+
+            EnsureControlPanelSkin();
+
+            try
+            {
+                GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1));
+                GUI.skin = controlPanelSkin;
+                ClampControlPanelToGameView(scale);
+                controlPanelRect = GUILayout.Window(GetInstanceID(), controlPanelRect, DrawControlPanel, "Screenshotter");
+                ClampControlPanelToGameView(scale);
+            }
+            finally
+            {
+                GUI.matrix = previousMatrix;
+                GUI.skin = previousSkin;
+            }
+        }
+
+        internal void EnsureControlPanelSkin()
+        {
+            if (controlPanelSkin != null)
+            {
+                return;
+            }
+
+            controlPanelSkin = Instantiate(GUI.skin);
+            controlPanelSkin.window.fontSize = 13;
+            controlPanelSkin.label.fontSize = 14;
+            controlPanelSkin.toggle.fontSize = 13;
+            controlPanelSkin.button.fontSize = 13;
+            controlPanelSkin.textField.fontSize = 13;
+        }
+
+        internal void ClampControlPanelToGameView(float scale)
+        {
+            float logicalWidth = Screen.width / scale;
+            float logicalHeight = Screen.height / scale;
+            float maximumX = Mathf.Max(0, logicalWidth - controlPanelRect.width);
+            float maximumY = Mathf.Max(0, logicalHeight - controlPanelRect.height);
+            controlPanelRect.x = Mathf.Clamp(controlPanelRect.x, 0, maximumX);
+            controlPanelRect.y = Mathf.Clamp(controlPanelRect.y, 0, maximumY);
+        }
+
+        internal void DrawControlPanel(int windowId)
+        {
+            GUILayout.Label("Input: " + (input != null ? input.currentControlScheme : "Unavailable"));
+            GUILayout.Label("Hold RMB to look; scroll while looking changes movement speed.");
+            GUILayout.Label("F1 shows/hides the panel.");
+
+            bool newDOFControl = GUILayout.Toggle(isDOFControl, "Depth of Field mode");
+            if (newDOFControl != isDOFControl)
+            {
+                isDOFControl = newDOFControl;
+                ReleaseCursor();
+            }
+
+            GUILayout.Space(6);
+            GUILayout.Label("Camera");
+            speed = DrawSlider("Movement speed", speed, 0.1f, 2f);
+            mouseLookSensitivity = DrawSlider("Mouse sensitivity", mouseLookSensitivity, 0.01f, 0.2f, "0.000");
+            scrollZoomSensitivity = DrawSlider("Scroll zoom", scrollZoomSensitivity, 0.5f, 10f);
+            camera.fieldOfView = DrawSlider("Field of view", camera.fieldOfView, 1f, 100f);
+            invertLook = GUILayout.Toggle(invertLook, "Invert vertical look");
+
+            GUILayout.Space(6);
+            GUILayout.Label("Depth of Field");
+            scrollApertureSensitivity = DrawSlider("Scroll aperture", scrollApertureSensitivity, 0.1f, 4f);
+#if UNITY_HDRP
+            nearStart = DrawSlider("Near start", nearStart, 0, 100);
+            nearEnd = DrawSlider("Near end", Mathf.Max(nearStart, nearEnd), nearStart, 100);
+            farStart = DrawSlider("Far start", farStart, 0, 100);
+            farEnd = DrawSlider("Far end", Mathf.Max(farStart, farEnd), farStart, 100);
+            aperture = DrawSlider("Aperture", aperture, 0.7f, 32f);
+
+            depthOfField.nearFocusStart.Override(nearStart);
+            depthOfField.nearFocusEnd.Override(nearEnd);
+            depthOfField.farFocusStart.Override(farStart);
+            depthOfField.farFocusEnd.Override(farEnd);
+            camera.aperture = aperture;
+#elif UNITY_URP || UNITY_BUILT_IN
+            focusDistance = DrawSlider("Focus distance", focusDistance, 0.1f, 100f);
+            focalLength = DrawSlider("Focal length", focalLength, 1f, 300f);
+            aperture = DrawSlider("Aperture", aperture, 0.1f, 32f);
+
+            depthOfField.focusDistance.Override(focusDistance);
+            depthOfField.focalLength.Override(focalLength);
+            depthOfField.aperture.Override(aperture);
+#else
+            GUILayout.Label("No supported render pipeline is active.");
+#endif
+
+            GUILayout.Space(6);
+            GUILayout.Label("Capture");
+            bool paused = Mathf.Approximately(Time.timeScale, 0);
+            bool newPaused = GUILayout.Toggle(paused, "Pause time");
+            if (newPaused != paused)
+            {
+                timeScale = newPaused ? 0 : 1;
+                Time.timeScale = timeScale;
+            }
+
+            gameViewScreenshot = GUILayout.Toggle(gameViewScreenshot, "Use Game View resolution");
+            if (!gameViewScreenshot)
+            {
+                screenShotResolution.x = DrawResolutionField("Width", ref screenshotWidthText, screenShotResolution.x);
+                screenShotResolution.y = DrawResolutionField("Height", ref screenshotHeightText, screenShotResolution.y);
+            }
+
+            if (GUILayout.Button("Take Screenshot (F12)"))
+            {
+                TakeScreenshot();
+            }
+
+            GUI.DragWindow(new Rect(0, 0, controlPanelRect.width, 24));
+        }
+
+        internal float DrawSlider(string label, float value, float minimum, float maximum, string format = "0.00")
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(label, GUILayout.Width(145));
+            float result = GUILayout.HorizontalSlider(value, minimum, maximum);
+            GUILayout.Label(result.ToString(format), GUILayout.Width(55));
+            GUILayout.EndHorizontal();
+            return result;
+        }
+
+        internal int DrawResolutionField(string label, ref string text, int value)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(label, GUILayout.Width(145));
+            text = GUILayout.TextField(text, GUILayout.Width(100));
+            int parsedValue;
+            if (int.TryParse(text, out parsedValue) && parsedValue > 0)
+            {
+                value = parsedValue;
+            }
+            GUILayout.EndHorizontal();
+            return value;
         }
     }
 }

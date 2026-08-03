@@ -112,7 +112,7 @@ MonoBehaviour:
       m_Calls: []
   m_ActionEvents: []
   m_NeverAutoSwitchControlSchemes: 0
-  m_DefaultControlScheme: Gamepad
+  m_DefaultControlScheme: Keyboard&Mouse
   m_DefaultActionMap: Main
   m_SplitScreenIndex: -1
   m_Camera: {fileID: 5636542704859318546}
@@ -133,6 +133,13 @@ MonoBehaviour:
   screenShotResolution: {x: 4096, y: 4096}
   debugTextColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
   debugFontSize: 30
+  mouseLookSensitivity: 0.05
+  gamepadLookSpeed: 90
+  dofAdjustmentSpeed: 1
+  scrollMovementSpeedSensitivity: 0.1
+  scrollZoomSensitivity: 3
+  scrollApertureSensitivity: 0.5
+  controlPanelReferenceResolution: {x: 1920, y: 1080}
   screenshotCount: 0
 --- !u!114 &4577549776235339593
 MonoBehaviour:

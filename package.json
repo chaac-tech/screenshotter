@@ -1,13 +1,15 @@
 {
   "name": "com.skatanicstudios.screenshotter",
   "displayName": "Screenshotter",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "unity": "2019.1",
-  "description": "Tool for taking promotional screen-shots in the Unity Editor using a Gamepad.",
+  "description": "Tool for taking promotional screenshots in the Unity Editor using a gamepad, keyboard, and mouse.",
   "keywords": [
     "screenshot",
     "input",
     "gamepad",
+    "keyboard",
+    "mouse",
     "camera"
   ],
   "dependencies": {
