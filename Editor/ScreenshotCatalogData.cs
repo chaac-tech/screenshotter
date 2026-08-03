@@ -212,7 +212,39 @@ namespace SkatanicStudios
                 }
             }
 
+            PruneEmptyObsolete(catalog);
             EditorUtility.SetDirty(catalog);
+        }
+
+        internal static int PruneEmptyObsolete(ScreenshotCatalog catalog)
+        {
+            if (catalog == null)
+            {
+                return 0;
+            }
+
+            int removed = 0;
+            foreach (ScreenshotCatalogCategory category in catalog.categories)
+            {
+                foreach (ScreenshotCatalogRequirement requirement in category.requirements)
+                {
+                    removed += requirement.slots.RemoveAll(slot => slot.obsolete && !HasAssignedImages(slot));
+                }
+
+                removed += category.requirements.RemoveAll(requirement =>
+                    requirement.obsolete && !requirement.slots.Any(HasAssignedImages));
+            }
+
+            removed += catalog.categories.RemoveAll(category =>
+                category.obsolete && !category.requirements
+                    .SelectMany(requirement => requirement.slots)
+                    .Any(HasAssignedImages));
+
+            if (removed > 0)
+            {
+                EditorUtility.SetDirty(catalog);
+            }
+            return removed;
         }
 
         internal static ScreenshotCatalogStatus GetStatus(ScreenshotCatalogRequirement requirement, ScreenshotCatalogSlot slot)
@@ -246,6 +278,26 @@ namespace SkatanicStudios
                     return sourceValid ? ScreenshotCatalogStatus.SourceReady : ScreenshotCatalogStatus.Missing;
                 default:
                     return ScreenshotCatalogStatus.Missing;
+            }
+        }
+
+        internal static string GetStatusLabel(ScreenshotCatalogStatus status)
+        {
+            return status == ScreenshotCatalogStatus.SourceReady ? "Source Ready" : status.ToString();
+        }
+
+        internal static Texture2D GetReviewTexture(ScreenshotCatalogRequirement requirement, ScreenshotCatalogSlot slot)
+        {
+            switch (requirement.workflow)
+            {
+                case ScreenshotAssetWorkflow.Capture:
+                    return slot.activeSource;
+                case ScreenshotAssetWorkflow.External:
+                    return slot.activeFinal;
+                case ScreenshotAssetWorkflow.CaptureThenFinal:
+                    return slot.activeFinal != null ? slot.activeFinal : slot.activeSource;
+                default:
+                    return null;
             }
         }
 
@@ -413,6 +465,14 @@ namespace SkatanicStudios
                 slot.finalVersions.Add(texture);
             }
             slot.activeFinal = texture;
+        }
+
+        private static bool HasAssignedImages(ScreenshotCatalogSlot slot)
+        {
+            return slot.activeSource != null ||
+                   slot.activeFinal != null ||
+                   slot.sourceVersions.Any(texture => texture != null) ||
+                   slot.finalVersions.Any(texture => texture != null);
         }
 
         private static void CopyRequirement(ScreenshotRequirementDefinition source, ScreenshotCatalogRequirement destination)

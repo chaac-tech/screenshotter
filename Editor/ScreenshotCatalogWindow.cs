@@ -4,6 +4,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.UIElements;
 
 namespace SkatanicStudios
 {
@@ -12,17 +13,20 @@ namespace SkatanicStudios
         [SerializeField] private ScreenshotCatalog catalog;
         [SerializeField] private Camera captureCamera;
         [SerializeField] private bool useScreenshotter = true;
+        [SerializeField] private bool matchGameViewResolution;
         [SerializeField] private InputActionReference captureActionReference;
         [SerializeField] private string armedCategoryId;
         [SerializeField] private string armedRequirementId;
         [SerializeField] private string armedSlotId;
-        [SerializeField] private Vector2 scrollPosition;
-        [SerializeField] private bool showObsolete;
         [NonSerialized] private Screenshotter runtimeScreenshotter;
         [NonSerialized] private string cameraSetupWarning;
+        [NonSerialized] private string gameViewResolutionWarning;
         [NonSerialized] private InputAction boundCaptureAction;
         [NonSerialized] private bool enabledCaptureAction;
         [NonSerialized] private int lastCaptureFrame = -1;
+        [NonSerialized] private IMGUIContainer headerContainer;
+        [NonSerialized] private IMGUIContainer catalogContainer;
+        [NonSerialized] private ScrollView catalogScrollView;
 
         [MenuItem("Window/Screenshotter/Requirement Catalog")]
         internal static void Open()
@@ -39,13 +43,14 @@ namespace SkatanicStudios
             ScreenshotCatalogWindow window = GetWindow<ScreenshotCatalogWindow>();
             window.catalog = targetCatalog;
             window.ClearArmedSlot();
-            window.Repaint();
+            window.RepaintContainers();
         }
 
         private void OnEnable()
         {
             ScreenshotterCaptureBridge.ManagedCaptureRequested = HandleManagedCapture;
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+            BuildVisualTree();
             AutoSelectCamera();
             if (EditorApplication.isPlaying)
             {
@@ -64,7 +69,28 @@ namespace SkatanicStudios
             }
         }
 
-        private void OnGUI()
+        private void BuildVisualTree()
+        {
+            rootVisualElement.Clear();
+            rootVisualElement.style.flexDirection = FlexDirection.Column;
+
+            headerContainer = new IMGUIContainer(DrawHeaderGUI);
+            headerContainer.style.flexShrink = 0;
+            rootVisualElement.Add(headerContainer);
+
+            catalogScrollView = new ScrollView();
+            catalogScrollView.name = "screenshot-catalog-scroll-view";
+            catalogScrollView.viewDataKey = "ScreenshotCatalogWindow.ScrollView";
+            catalogScrollView.style.flexGrow = 1;
+            catalogScrollView.style.flexShrink = 1;
+
+            catalogContainer = new IMGUIContainer(DrawCatalogGUI);
+            catalogContainer.style.flexGrow = 1;
+            catalogScrollView.Add(catalogContainer);
+            rootVisualElement.Add(catalogScrollView);
+        }
+
+        private void DrawHeaderGUI()
         {
             DrawAssetSelection();
             EditorGUILayout.Space();
@@ -78,11 +104,15 @@ namespace SkatanicStudios
             DrawCatalogConfiguration();
             EditorGUILayout.Space();
             DrawCaptureToolbar();
-            EditorGUILayout.Space();
+        }
 
-            scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
+        private void DrawCatalogGUI()
+        {
+            if (catalog == null)
+            {
+                return;
+            }
             DrawCatalogContents();
-            EditorGUILayout.EndScrollView();
         }
 
         private void DrawAssetSelection()
@@ -93,6 +123,7 @@ namespace SkatanicStudios
             {
                 catalog = newCatalog;
                 ClearArmedSlot();
+                RepaintContainers();
             }
 
             if (catalog != null)
@@ -150,14 +181,15 @@ namespace SkatanicStudios
         private void DrawCatalogConfiguration()
         {
             EditorGUILayout.LabelField("Catalog Configuration", EditorStyles.boldLabel);
-            EditorGUI.BeginChangeCheck();
-            string outputRoot = EditorGUILayout.TextField("Output Root", catalog.outputRoot);
-            if (EditorGUI.EndChangeCheck())
+            EditorGUILayout.BeginHorizontal();
+            EditorGUI.BeginDisabledGroup(true);
+            EditorGUILayout.TextField("Output Root", catalog.outputRoot);
+            EditorGUI.EndDisabledGroup();
+            if (GUILayout.Button("Browse...", GUILayout.Width(75)))
             {
-                Undo.RecordObject(catalog, "Change Screenshot Output Root");
-                catalog.outputRoot = outputRoot.Replace('\\', '/');
-                EditorUtility.SetDirty(catalog);
+                SelectOutputRoot();
             }
+            EditorGUILayout.EndHorizontal();
 
             if (!IsValidOutputRoot(catalog.outputRoot))
             {
@@ -192,15 +224,42 @@ namespace SkatanicStudios
                 EditorUtility.SetDirty(catalog);
             }
 
-            EditorGUILayout.BeginHorizontal();
             if (GUILayout.Button("Synchronize From Template"))
             {
                 Undo.RecordObject(catalog, "Synchronize Screenshot Catalog");
                 ScreenshotCatalogUtility.Synchronize(catalog);
                 AssetDatabase.SaveAssets();
+                RepaintContainers();
             }
-            showObsolete = GUILayout.Toggle(showObsolete, "Show Obsolete", "Button", GUILayout.Width(110));
-            EditorGUILayout.EndHorizontal();
+        }
+
+        private void SelectOutputRoot()
+        {
+            string projectRoot = Directory.GetParent(Application.dataPath).FullName;
+            string initialFolder = IsValidOutputRoot(catalog.outputRoot)
+                ? Path.GetFullPath(Path.Combine(projectRoot, catalog.outputRoot.Replace('/', Path.DirectorySeparatorChar)))
+                : Application.dataPath;
+            string selectedFolder = EditorUtility.OpenFolderPanel("Select Screenshot Output Folder", initialFolder, string.Empty);
+            if (string.IsNullOrEmpty(selectedFolder))
+            {
+                return;
+            }
+
+            string assetFolder;
+            if (!TryConvertToAssetFolder(selectedFolder, out assetFolder))
+            {
+                EditorUtility.DisplayDialog(
+                    "Invalid Screenshot Output Folder",
+                    "Choose a folder inside this project's Assets folder so captured images can be imported and referenced by the catalog.",
+                    "OK");
+                return;
+            }
+
+            Undo.RecordObject(catalog, "Change Screenshot Output Root");
+            catalog.outputRoot = assetFolder;
+            EditorUtility.SetDirty(catalog);
+            AssetDatabase.SaveAssets();
+            RepaintContainers();
         }
 
         private void DrawCaptureToolbar()
@@ -236,6 +295,21 @@ namespace SkatanicStudios
                 {
                     ConfigurePlayModeCapture();
                 }
+            }
+
+            bool newMatchGameViewResolution = EditorGUILayout.Toggle("Match Game View To Armed Slot", matchGameViewResolution);
+            if (newMatchGameViewResolution != matchGameViewResolution)
+            {
+                matchGameViewResolution = newMatchGameViewResolution;
+                gameViewResolutionWarning = null;
+                if (matchGameViewResolution)
+                {
+                    ApplyArmedGameViewResolution();
+                }
+            }
+            if (!string.IsNullOrEmpty(gameViewResolutionWarning))
+            {
+                EditorGUILayout.HelpBox(gameViewResolutionWarning, MessageType.Warning);
             }
 
             InputActionReference newCaptureAction = (InputActionReference)EditorGUILayout.ObjectField(
@@ -293,19 +367,10 @@ namespace SkatanicStudios
         {
             foreach (ScreenshotCatalogCategory category in catalog.categories)
             {
-                if (category.obsolete && !showObsolete)
-                {
-                    continue;
-                }
-
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
                 EditorGUILayout.LabelField(category.name + (category.obsolete ? " (Obsolete)" : string.Empty), EditorStyles.boldLabel);
                 foreach (ScreenshotCatalogRequirement requirement in category.requirements)
                 {
-                    if (requirement.obsolete && !showObsolete)
-                    {
-                        continue;
-                    }
                     DrawRequirement(category, requirement);
                 }
                 EditorGUILayout.EndVertical();
@@ -331,10 +396,6 @@ namespace SkatanicStudios
             for (int index = 0; index < requirement.slots.Count; index++)
             {
                 ScreenshotCatalogSlot slot = requirement.slots[index];
-                if (slot.obsolete && !showObsolete)
-                {
-                    continue;
-                }
                 DrawSlot(category, requirement, slot, index);
             }
             EditorGUILayout.EndVertical();
@@ -348,7 +409,7 @@ namespace SkatanicStudios
             EditorGUILayout.LabelField(slot.name + (slot.required ? " *" : string.Empty), GUILayout.MinWidth(150));
             Color previousColor = GUI.color;
             GUI.color = GetStatusColor(status);
-            GUILayout.Label(status.ToString(), EditorStyles.miniBoldLabel, GUILayout.Width(85));
+            GUILayout.Label(ScreenshotCatalogUtility.GetStatusLabel(status), EditorStyles.miniBoldLabel, GUILayout.Width(85));
             GUI.color = previousColor;
 
             bool canCapture = !requirement.obsolete && !slot.obsolete && requirement.workflow != ScreenshotAssetWorkflow.External;
@@ -417,6 +478,7 @@ namespace SkatanicStudios
             armedCategoryId = category.definitionId;
             armedRequirementId = requirement.definitionId;
             armedSlotId = slot.definitionId;
+            ApplyGameViewResolution(requirement);
             AutoSelectCamera();
             if (EditorApplication.isPlaying && useScreenshotter)
             {
@@ -503,7 +565,7 @@ namespace SkatanicStudios
             ScreenshotCatalogUtility.AddSourceVersion(slot, texture);
             EditorUtility.SetDirty(catalog);
             AssetDatabase.SaveAssets();
-            Repaint();
+            RepaintContainers();
             Debug.Log("Captured catalog image: " + assetPath, texture);
         }
 
@@ -597,14 +659,14 @@ namespace SkatanicStudios
                 runtimeScreenshotter = null;
                 AutoSelectCamera();
                 ConfigurePlayModeCapture();
-                Repaint();
+                RepaintContainers();
             }
             else if (state == PlayModeStateChange.ExitingPlayMode || state == PlayModeStateChange.EnteredEditMode)
             {
                 runtimeScreenshotter = null;
                 cameraSetupWarning = null;
                 UnbindCaptureAction();
-                Repaint();
+                RepaintContainers();
             }
         }
 
@@ -695,6 +757,31 @@ namespace SkatanicStudios
             }
         }
 
+        private void ApplyArmedGameViewResolution()
+        {
+            ScreenshotCatalogCategory category;
+            ScreenshotCatalogRequirement requirement;
+            ScreenshotCatalogSlot slot;
+            if (TryGetArmedSlot(out category, out requirement, out slot))
+            {
+                ApplyGameViewResolution(requirement);
+            }
+        }
+
+        private void ApplyGameViewResolution(ScreenshotCatalogRequirement requirement)
+        {
+            if (!matchGameViewResolution || requirement == null)
+            {
+                return;
+            }
+
+            if (!GameViewResolutionUtility.TrySetResolution(requirement.width, requirement.height, out gameViewResolutionWarning))
+            {
+                Debug.LogWarning(gameViewResolutionWarning);
+            }
+            RepaintContainers();
+        }
+
         private static bool IsValidOutputRoot(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
@@ -720,6 +807,41 @@ namespace SkatanicStudios
             }
         }
 
+        internal static bool TryConvertToAssetFolder(string absoluteFolder, out string assetFolder)
+        {
+            assetFolder = null;
+            if (string.IsNullOrWhiteSpace(absoluteFolder))
+            {
+                return false;
+            }
+
+            try
+            {
+                string assetsRoot = Path.GetFullPath(Application.dataPath)
+                    .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                string selected = Path.GetFullPath(absoluteFolder)
+                    .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                if (string.Equals(selected, assetsRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    assetFolder = "Assets";
+                    return true;
+                }
+
+                string prefix = assetsRoot + Path.DirectorySeparatorChar;
+                if (!selected.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+
+                assetFolder = ("Assets/" + selected.Substring(prefix.Length)).Replace('\\', '/');
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
         private static Color GetStatusColor(ScreenshotCatalogStatus status)
         {
             switch (status)
@@ -735,6 +857,19 @@ namespace SkatanicStudios
                 default:
                     return Color.white;
             }
+        }
+
+        private void RepaintContainers()
+        {
+            if (headerContainer != null)
+            {
+                headerContainer.MarkDirtyRepaint();
+            }
+            if (catalogContainer != null)
+            {
+                catalogContainer.MarkDirtyRepaint();
+            }
+            Repaint();
         }
     }
 }

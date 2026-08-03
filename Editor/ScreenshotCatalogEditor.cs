@@ -140,11 +140,11 @@ namespace SkatanicStudios
                 EditorGUILayout.LabelField(slot.name + (slot.required ? " *" : string.Empty), GUILayout.MinWidth(120));
                 Color previousColor = GUI.color;
                 GUI.color = GetStatusColor(status);
-                GUILayout.Label(status.ToString(), EditorStyles.miniBoldLabel, GUILayout.Width(85));
+                GUILayout.Label(ScreenshotCatalogUtility.GetStatusLabel(status), EditorStyles.miniBoldLabel, GUILayout.Width(85));
                 GUI.color = previousColor;
-                Texture2D active = requirement.workflow == ScreenshotAssetWorkflow.Capture ? slot.activeSource : slot.activeFinal;
+                Texture2D reviewTexture = ScreenshotCatalogUtility.GetReviewTexture(requirement, slot);
                 EditorGUI.BeginDisabledGroup(true);
-                EditorGUILayout.ObjectField(active, typeof(Texture2D), false, GUILayout.MinWidth(100));
+                EditorGUILayout.ObjectField(reviewTexture, typeof(Texture2D), false, GUILayout.MinWidth(100));
                 EditorGUI.EndDisabledGroup();
                 EditorGUILayout.EndHorizontal();
             }

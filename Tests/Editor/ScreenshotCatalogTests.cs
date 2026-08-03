@@ -84,10 +84,78 @@ namespace SkatanicStudios
         }
 
         [Test]
+        public void SynchronizePrunesUncheckedCategoryWhenItHasNoAssignedImages()
+        {
+            ScreenshotTemplate template = ScreenshotTemplatePresets.CreateMetaMasterTemplate();
+            ScreenshotCatalog catalog = ScriptableObject.CreateInstance<ScreenshotCatalog>();
+            ScreenshotCatalogUtility.InitializeCatalog(catalog, template);
+            string categoryId = catalog.categories[0].definitionId;
+
+            catalog.includedCategoryIds.Remove(categoryId);
+            ScreenshotCatalogUtility.Synchronize(catalog);
+
+            Assert.That(catalog.categories.Any(category => category.definitionId == categoryId), Is.False);
+            Object.DestroyImmediate(catalog);
+            Object.DestroyImmediate(template);
+        }
+
+        [Test]
+        public void PruneEmptyObsoleteKeepsEntriesWithVersionHistory()
+        {
+            ScreenshotCatalog catalog = ScriptableObject.CreateInstance<ScreenshotCatalog>();
+            ScreenshotCatalogCategory category = new ScreenshotCatalogCategory { obsolete = true };
+            ScreenshotCatalogRequirement emptyRequirement = new ScreenshotCatalogRequirement { obsolete = true };
+            emptyRequirement.slots.Add(new ScreenshotCatalogSlot { obsolete = true });
+            ScreenshotCatalogRequirement assignedRequirement = new ScreenshotCatalogRequirement { obsolete = true };
+            Texture2D version = new Texture2D(2, 2);
+            ScreenshotCatalogSlot assignedSlot = new ScreenshotCatalogSlot { obsolete = true };
+            assignedSlot.sourceVersions.Add(version);
+            assignedRequirement.slots.Add(assignedSlot);
+            category.requirements.Add(emptyRequirement);
+            category.requirements.Add(assignedRequirement);
+            catalog.categories.Add(category);
+
+            int removed = ScreenshotCatalogUtility.PruneEmptyObsolete(catalog);
+
+            Assert.That(removed, Is.EqualTo(2));
+            Assert.That(catalog.categories.Single(), Is.SameAs(category));
+            Assert.That(category.requirements.Single(), Is.SameAs(assignedRequirement));
+            Object.DestroyImmediate(version);
+            Object.DestroyImmediate(catalog);
+        }
+
+        [Test]
         public void FilenameIsSanitizedAndVersioned()
         {
             string filename = ScreenshotCatalogUtility.GetVersionedFilename("Hero Cover_Art", 0, 12);
             Assert.That(filename, Is.EqualTo("Hero-Cover-Art-01-v012.png"));
+        }
+
+        [Test]
+        public void SourceReadyStatusUsesReadableLabel()
+        {
+            Assert.That(
+                ScreenshotCatalogUtility.GetStatusLabel(ScreenshotCatalogStatus.SourceReady),
+                Is.EqualTo("Source Ready"));
+        }
+
+        [Test]
+        public void CaptureThenFinalReviewPrefersFinalAndFallsBackToSource()
+        {
+            ScreenshotCatalogRequirement requirement = new ScreenshotCatalogRequirement
+            {
+                workflow = ScreenshotAssetWorkflow.CaptureThenFinal
+            };
+            Texture2D source = new Texture2D(2, 2);
+            Texture2D final = new Texture2D(2, 2);
+            ScreenshotCatalogSlot slot = new ScreenshotCatalogSlot { activeSource = source };
+
+            Assert.That(ScreenshotCatalogUtility.GetReviewTexture(requirement, slot), Is.SameAs(source));
+            slot.activeFinal = final;
+            Assert.That(ScreenshotCatalogUtility.GetReviewTexture(requirement, slot), Is.SameAs(final));
+
+            Object.DestroyImmediate(source);
+            Object.DestroyImmediate(final);
         }
 
         [Test]
@@ -202,6 +270,46 @@ namespace SkatanicStudios
             Assert.That(width, Is.EqualTo(80));
             Assert.That(height, Is.EqualTo(40));
             Object.DestroyImmediate(gameObject);
+        }
+
+        [Test]
+        public void GameViewResolutionRejectsInvalidSlotDimensions()
+        {
+            bool updated = GameViewResolutionUtility.TrySetResolution(0, 1080, out string error);
+
+            Assert.That(updated, Is.False);
+            Assert.That(error, Does.Contain("positive width and height"));
+        }
+
+        [Test]
+        public void GameViewSizeCollectionCanBeResolved()
+        {
+            bool resolved = GameViewResolutionUtility.TryGetSizeCollection(out object sizes, out string error);
+
+            Assert.That(resolved, Is.True, error);
+            Assert.That(sizes, Is.Not.Null);
+        }
+
+        [Test]
+        public void OutputFolderSelectionUsesProjectRelativeAssetPath()
+        {
+            string selectedFolder = Path.Combine(Application.dataPath, "Screenshots", "Campaign");
+
+            bool converted = ScreenshotCatalogWindow.TryConvertToAssetFolder(selectedFolder, out string assetFolder);
+
+            Assert.That(converted, Is.True);
+            Assert.That(assetFolder, Is.EqualTo("Assets/Screenshots/Campaign"));
+        }
+
+        [Test]
+        public void OutputFolderSelectionRejectsFolderOutsideAssets()
+        {
+            string selectedFolder = Directory.GetParent(Application.dataPath).FullName;
+
+            bool converted = ScreenshotCatalogWindow.TryConvertToAssetFolder(selectedFolder, out string assetFolder);
+
+            Assert.That(converted, Is.False);
+            Assert.That(assetFolder, Is.Null);
         }
 
         private static void CreatePngAsset(string assetPath, int width, int height)
