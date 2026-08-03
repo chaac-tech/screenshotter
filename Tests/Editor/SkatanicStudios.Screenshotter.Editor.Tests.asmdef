@@ -1,0 +1,22 @@
+{
+    "name": "SkatanicStudios.Screenshotter.Editor.Tests",
+    "references": [
+        "SkatanicStudios.Screenshotter",
+        "SkatanicStudios.Screenshotter.Editor",
+        "GUID:75469ad4d38634e559750d17036d5f7c"
+    ],
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

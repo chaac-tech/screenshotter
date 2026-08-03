@@ -10,7 +10,26 @@ Screenshotter is a simple Camera controller plug-in for Unity that is designed t
   * Camera controller using a gamepad or keyboard and mouse
   * Depth of Field Controls
   * One Click Screenshot Feature
+  * Reusable screenshot requirement templates and per-project catalogs
+  * Exact-resolution, versioned captures linked back to catalog slots
   * Cross-Compatible with Built-In/URP/HDRP Renderers
+
+## Requirement catalogs
+
+Open **Window > Screenshotter > Requirement Catalog** to manage promotional image requirements.
+
+1. In the Project window, use **Assets > Create > Screenshotter > Meta Horizon Master Template** for the pre-populated Meta category, or **Requirement Template** for a blank master.
+2. Use **Assets > Create > Screenshotter > Catalog** once for each project, campaign, or release.
+3. Select the catalog in the Screenshot Catalog window, choose its master from the dropdown, choose the included categories, and synchronize it.
+4. Select the scene Camera that should take the image and arm a capture slot.
+5. Choose whether to use Screenshotter's fly-camera controls. When enabled, Play Mode adds and configures the missing Screenshotter/PlayerInput components; when disabled, captures render directly from the selected gameplay Camera without adding components.
+6. Optionally assign an `InputActionReference` for capture, then use that action or the window button. With Screenshotter enabled and no custom action, its normal F12 binding remains available.
+
+Managed captures are saved below `Assets/Screenshots/{Catalog}/{Category}/` using names such as `Hero-Cover-01-v001.png`. Recapturing creates a new version and keeps earlier versions available. Capture-then-final requirements retain the raw source separately from the externally edited final PNG. If no catalog slot is armed, F12 continues to use the normal save dialog.
+
+Catalog synchronization is non-destructive. New and changed template requirements are copied into the catalog, existing image references are retained, and removed requirements are marked obsolete for review.
+
+Selecting a catalog in the Project window shows a compact completion summary and requirement review instead of its raw serialized IDs. Use **Open Screenshot Catalog** in that Inspector to continue working with the selected catalog.
 
 ## Installation
 

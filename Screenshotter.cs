@@ -18,6 +18,11 @@ using UnityEngine.Rendering.PostProcessing;
 #endif
 namespace SkatanicStudios
 {
+    internal static class ScreenshotterCaptureBridge
+    {
+        internal static System.Func<Screenshotter, bool> ManagedCaptureRequested;
+    }
+
     [RequireComponent(typeof(Camera))]
     [RequireComponent(typeof(PlayerInput))]
     public class Screenshotter : MonoBehaviour
@@ -509,6 +514,12 @@ namespace SkatanicStudios
         public void TakeScreenshot()
         {
 #if UNITY_EDITOR
+            if (ScreenshotterCaptureBridge.ManagedCaptureRequested != null &&
+                ScreenshotterCaptureBridge.ManagedCaptureRequested(this))
+            {
+                return;
+            }
+
             string time = string.Format("{0}_{1}_{2}", System.DateTime.Now.Year, System.DateTime.Now.Month, System.DateTime.Now.Day);
             string name = string.Format("{0}_{1}_shot_{2}", time, Application.productName, screenshotCount).ToLower();
             string fullpathname = EditorUtility.SaveFilePanel("Save Screenshot", "", name, "png");
@@ -545,7 +556,7 @@ namespace SkatanicStudios
                 RenderTexture cameraTargetTexture = camera.targetTexture;
                 RenderTexture rt = new RenderTexture(screenShotResolution.x, screenShotResolution.y, 24);
                 camera.targetTexture = rt;
-                Texture2D screenShot = new Texture2D(screenShotResolution.x, screenShotResolution.y, TextureFormat.RGBA32, false);
+                Texture2D screenShot = new Texture2D(screenShotResolution.x, screenShotResolution.y, TextureFormat.RGB24, false);
                 camera.Render();
                 RenderTexture.active = rt;
                 screenShot.ReadPixels(new Rect(0, 0, screenShotResolution.x, screenShotResolution.y), 0, 0);
@@ -565,6 +576,15 @@ namespace SkatanicStudios
                 byte[] bytes = screenShot.EncodeToPNG();
 
                 System.IO.File.WriteAllBytes(fullPath, bytes);
+
+                if (Application.isEditor)
+                {
+                    DestroyImmediate(screenShot);
+                }
+                else
+                {
+                    Destroy(screenShot);
+                }
             }
 
             Debug.Log(string.Format("Took screenshot to: {0}", fullPath));
