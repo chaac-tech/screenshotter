@@ -159,6 +159,38 @@ namespace SkatanicStudios
         }
 
         [Test]
+        public void RemovingActiveVersionPromotesNewestRemainingVersion()
+        {
+            Texture2D first = new Texture2D(2, 2);
+            Texture2D accidental = new Texture2D(2, 2);
+            ScreenshotCatalogSlot slot = new ScreenshotCatalogSlot();
+            ScreenshotCatalogUtility.AddSourceVersion(slot, first);
+            ScreenshotCatalogUtility.AddSourceVersion(slot, accidental);
+
+            ScreenshotCatalogUtility.RemoveSourceVersion(slot, 1);
+
+            Assert.That(slot.sourceVersions, Is.EqualTo(new[] { first }));
+            Assert.That(slot.activeSource, Is.SameAs(first));
+            Object.DestroyImmediate(first);
+            Object.DestroyImmediate(accidental);
+        }
+
+        [Test]
+        public void RemovingOnlyFinalVersionClearsActiveFinalWithoutDeletingAsset()
+        {
+            Texture2D final = new Texture2D(2, 2);
+            ScreenshotCatalogSlot slot = new ScreenshotCatalogSlot();
+            ScreenshotCatalogUtility.AddFinalVersion(slot, final);
+
+            ScreenshotCatalogUtility.RemoveFinalVersion(slot, 0);
+
+            Assert.That(slot.finalVersions, Is.Empty);
+            Assert.That(slot.activeFinal, Is.Null);
+            Assert.That(final, Is.Not.Null);
+            Object.DestroyImmediate(final);
+        }
+
+        [Test]
         public void ValidCapturedPngCompletesCaptureSlot()
         {
             string assetPath = TestFolder + "/valid.png";

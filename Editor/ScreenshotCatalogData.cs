@@ -467,6 +467,31 @@ namespace SkatanicStudios
             slot.activeFinal = texture;
         }
 
+        internal static void RemoveSourceVersion(ScreenshotCatalogSlot slot, int index)
+        {
+            RemoveVersion(slot.sourceVersions, ref slot.activeSource, index);
+        }
+
+        internal static void RemoveFinalVersion(ScreenshotCatalogSlot slot, int index)
+        {
+            RemoveVersion(slot.finalVersions, ref slot.activeFinal, index);
+        }
+
+        private static void RemoveVersion(List<Texture2D> versions, ref Texture2D active, int index)
+        {
+            if (index < 0 || index >= versions.Count)
+            {
+                return;
+            }
+
+            Texture2D removed = versions[index];
+            versions.RemoveAt(index);
+            if (active == removed || !versions.Contains(active))
+            {
+                active = versions.LastOrDefault(texture => texture != null);
+            }
+        }
+
         private static bool HasAssignedImages(ScreenshotCatalogSlot slot)
         {
             return slot.activeSource != null ||

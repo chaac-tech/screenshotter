@@ -117,8 +117,12 @@ namespace SkatanicStudios
 
         private void DrawAssetSelection()
         {
-            EditorGUILayout.LabelField("Assets", EditorStyles.boldLabel);
-            ScreenshotCatalog newCatalog = (ScreenshotCatalog)EditorGUILayout.ObjectField("Catalog", catalog, typeof(ScreenshotCatalog), false);
+            EditorGUILayout.LabelField(Tip("Assets", "Select the catalog and master template that define this capture session."), EditorStyles.boldLabel);
+            ScreenshotCatalog newCatalog = (ScreenshotCatalog)EditorGUILayout.ObjectField(
+                Tip("Catalog", "The per-project, campaign, or release asset that tracks required slots, capture history, and final deliverables."),
+                catalog,
+                typeof(ScreenshotCatalog),
+                false);
             if (newCatalog != catalog)
             {
                 catalog = newCatalog;
@@ -155,7 +159,10 @@ namespace SkatanicStudios
                 currentIndex = 0;
             }
 
-            int newIndex = EditorGUILayout.Popup("Master Template", currentIndex, labels);
+            int newIndex = EditorGUILayout.Popup(
+                Tip("Master Template", "Reusable requirement definitions used to synchronize this catalog. Changing it resets the included-category selection."),
+                currentIndex,
+                labels);
             if (newIndex == currentIndex)
             {
                 return;
@@ -180,12 +187,14 @@ namespace SkatanicStudios
 
         private void DrawCatalogConfiguration()
         {
-            EditorGUILayout.LabelField("Catalog Configuration", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(Tip("Catalog Configuration", "Choose where managed captures are saved and which template categories this catalog tracks."), EditorStyles.boldLabel);
             EditorGUILayout.BeginHorizontal();
             EditorGUI.BeginDisabledGroup(true);
-            EditorGUILayout.TextField("Output Root", catalog.outputRoot);
+            EditorGUILayout.TextField(
+                Tip("Output Root", "Read-only project-relative folder beneath Assets. Managed captures are organized below it by catalog and category."),
+                catalog.outputRoot);
             EditorGUI.EndDisabledGroup();
-            if (GUILayout.Button("Browse...", GUILayout.Width(75)))
+            if (GUILayout.Button(Tip("Browse...", "Choose the output root with a folder browser. The folder must be inside this project's Assets folder."), GUILayout.Width(75)))
             {
                 SelectOutputRoot();
             }
@@ -202,11 +211,13 @@ namespace SkatanicStudios
                 return;
             }
 
-            EditorGUILayout.LabelField("Included Categories", EditorStyles.miniBoldLabel);
+            EditorGUILayout.LabelField(Tip("Included Categories", "Template categories that will be copied into this catalog during synchronization."), EditorStyles.miniBoldLabel);
             foreach (ScreenshotCategoryDefinition category in catalog.template.categories)
             {
                 bool included = catalog.includedCategoryIds.Contains(category.id);
-                bool newIncluded = EditorGUILayout.ToggleLeft(category.name, included);
+                bool newIncluded = EditorGUILayout.ToggleLeft(
+                    Tip(category.name, "Include or exclude this category the next time the catalog synchronizes with its master template."),
+                    included);
                 if (newIncluded == included)
                 {
                     continue;
@@ -224,7 +235,9 @@ namespace SkatanicStudios
                 EditorUtility.SetDirty(catalog);
             }
 
-            if (GUILayout.Button("Synchronize From Template"))
+            if (GUILayout.Button(Tip(
+                    "Synchronize From Template",
+                    "Add or update included requirements from the master template, preserve capture history, mark removed populated entries obsolete, and prune empty obsolete entries.")))
             {
                 Undo.RecordObject(catalog, "Synchronize Screenshot Catalog");
                 ScreenshotCatalogUtility.Synchronize(catalog);
@@ -264,8 +277,12 @@ namespace SkatanicStudios
 
         private void DrawCaptureToolbar()
         {
-            EditorGUILayout.LabelField("Capture", EditorStyles.boldLabel);
-            Camera newCamera = (Camera)EditorGUILayout.ObjectField("Camera", captureCamera, typeof(Camera), true);
+            EditorGUILayout.LabelField(Tip("Capture", "Configure the scene camera and input used to capture the armed catalog slot."), EditorStyles.boldLabel);
+            Camera newCamera = (Camera)EditorGUILayout.ObjectField(
+                Tip("Camera", "Scene Camera used to render managed screenshots. The sole active Camera is selected automatically when possible."),
+                captureCamera,
+                typeof(Camera),
+                true);
             if (newCamera != captureCamera)
             {
                 captureCamera = newCamera;
@@ -285,7 +302,9 @@ namespace SkatanicStudios
                 EditorGUILayout.HelpBox(cameraSetupWarning, MessageType.Warning);
             }
 
-            bool newUseScreenshotter = EditorGUILayout.Toggle("Use Screenshotter", useScreenshotter);
+            bool newUseScreenshotter = EditorGUILayout.Toggle(
+                Tip("Use Screenshotter", "Add and configure Screenshotter and PlayerInput on the selected Camera during Play Mode. Disable this to capture directly from an ordinary gameplay Camera."),
+                useScreenshotter);
             if (newUseScreenshotter != useScreenshotter)
             {
                 useScreenshotter = newUseScreenshotter;
@@ -297,7 +316,9 @@ namespace SkatanicStudios
                 }
             }
 
-            bool newMatchGameViewResolution = EditorGUILayout.Toggle("Match Game View To Armed Slot", matchGameViewResolution);
+            bool newMatchGameViewResolution = EditorGUILayout.Toggle(
+                Tip("Match Game View To Armed Slot", "When a slot is armed, select or create its exact fixed resolution in the Unity Game View and refresh the Game View scale."),
+                matchGameViewResolution);
             if (newMatchGameViewResolution != matchGameViewResolution)
             {
                 matchGameViewResolution = newMatchGameViewResolution;
@@ -313,7 +334,10 @@ namespace SkatanicStudios
             }
 
             InputActionReference newCaptureAction = (InputActionReference)EditorGUILayout.ObjectField(
-                "Capture Input Action", captureActionReference, typeof(InputActionReference), false);
+                Tip("Capture Input Action", "Optional Input System action that triggers the armed capture in Play Mode. Leave empty to use Screenshotter's normal F12 input when Screenshotter is enabled."),
+                captureActionReference,
+                typeof(InputActionReference),
+                false);
             if (newCaptureAction != captureActionReference)
             {
                 UnbindCaptureAction();
@@ -329,9 +353,11 @@ namespace SkatanicStudios
             ScreenshotCatalogCategory category;
             bool armed = TryGetArmedSlot(out category, out requirement, out slot);
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("Armed Slot", armed ? category.name + " / " + requirement.name + " / " + slot.name : "None");
+            EditorGUILayout.LabelField(
+                Tip("Armed Slot", "The catalog slot that will receive the next managed capture."),
+                Tip(armed ? category.name + " / " + requirement.name + " / " + slot.name : "None", "Category, requirement, and slot currently targeted for capture."));
             EditorGUI.BeginDisabledGroup(!armed);
-            if (GUILayout.Button("Clear", GUILayout.Width(60)))
+            if (GUILayout.Button(Tip("Clear", "Disarm the current slot without changing its assigned images."), GUILayout.Width(60)))
             {
                 ClearArmedSlot();
             }
@@ -348,7 +374,7 @@ namespace SkatanicStudios
             {
                 captureButtonLabel += " (F12)";
             }
-            if (GUILayout.Button(captureButtonLabel, GUILayout.Height(30)))
+            if (GUILayout.Button(Tip(captureButtonLabel, "Capture the selected Camera at the armed requirement's resolution, save a new version, import it, and make it the active source."), GUILayout.Height(30)))
             {
                 CaptureArmedSlot();
             }
@@ -368,7 +394,9 @@ namespace SkatanicStudios
             foreach (ScreenshotCatalogCategory category in catalog.categories)
             {
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-                EditorGUILayout.LabelField(category.name + (category.obsolete ? " (Obsolete)" : string.Empty), EditorStyles.boldLabel);
+                EditorGUILayout.LabelField(
+                    Tip(category.name + (category.obsolete ? " (Obsolete)" : string.Empty), "Catalog category copied from the master template. Obsolete categories are retained because they contain capture history."),
+                    EditorStyles.boldLabel);
                 foreach (ScreenshotCatalogRequirement requirement in category.requirements)
                 {
                     DrawRequirement(category, requirement);
@@ -382,13 +410,19 @@ namespace SkatanicStudios
         {
             EditorGUILayout.BeginVertical("box");
             string specification = string.Format("{0} — {1}x{2} ({3}) — {4}", requirement.workflow, requirement.width, requirement.height, requirement.dimensionRule, requirement.imageFormat);
-            EditorGUILayout.LabelField(requirement.name + (requirement.obsolete ? " (Obsolete)" : string.Empty), EditorStyles.miniBoldLabel);
-            EditorGUILayout.LabelField(specification, EditorStyles.miniLabel);
+            EditorGUILayout.LabelField(
+                Tip(requirement.name + (requirement.obsolete ? " (Obsolete)" : string.Empty), "Deliverable requirement copied from the master template."),
+                EditorStyles.miniBoldLabel);
+            EditorGUILayout.LabelField(
+                Tip(specification, "Workflow, target dimensions, dimension validation rule, and required PNG format."),
+                EditorStyles.miniLabel);
             if (!string.IsNullOrWhiteSpace(requirement.guidance))
             {
                 EditorGUILayout.HelpBox(requirement.guidance, MessageType.None);
             }
-            if (!string.IsNullOrWhiteSpace(requirement.sourceUrl) && GUILayout.Button("Open Source Guidelines", EditorStyles.miniButton))
+            if (!string.IsNullOrWhiteSpace(requirement.sourceUrl) && GUILayout.Button(
+                    Tip("Open Source Guidelines", "Open the specification URL stored by the master template."),
+                    EditorStyles.miniButton))
             {
                 Application.OpenURL(requirement.sourceUrl);
             }
@@ -406,16 +440,25 @@ namespace SkatanicStudios
             ScreenshotCatalogStatus status = ScreenshotCatalogUtility.GetStatus(requirement, slot);
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField(slot.name + (slot.required ? " *" : string.Empty), GUILayout.MinWidth(150));
+            EditorGUILayout.LabelField(
+                Tip(slot.name + (slot.required ? " *" : string.Empty), slot.required
+                    ? "Required image slot. It contributes to the catalog's missing count until complete."
+                    : "Optional image slot. It does not contribute to the catalog's missing count."),
+                GUILayout.MinWidth(150));
             Color previousColor = GUI.color;
             GUI.color = GetStatusColor(status);
-            GUILayout.Label(ScreenshotCatalogUtility.GetStatusLabel(status), EditorStyles.miniBoldLabel, GUILayout.Width(85));
+            GUILayout.Label(
+                Tip(ScreenshotCatalogUtility.GetStatusLabel(status), GetStatusTooltip(status)),
+                EditorStyles.miniBoldLabel,
+                GUILayout.Width(85));
             GUI.color = previousColor;
 
             bool canCapture = !requirement.obsolete && !slot.obsolete && requirement.workflow != ScreenshotAssetWorkflow.External;
             EditorGUI.BeginDisabledGroup(!canCapture);
             bool isArmed = IsArmed(category, requirement, slot);
-            if (GUILayout.Button(isArmed ? "Armed" : "Arm", GUILayout.Width(60)))
+            if (GUILayout.Button(
+                    Tip(isArmed ? "Armed" : "Arm", "Target this slot for the next managed capture and apply its configured resolution."),
+                    GUILayout.Width(60)))
             {
                 Arm(category, requirement, slot);
             }
@@ -428,6 +471,10 @@ namespace SkatanicStudios
                 {
                     Undo.RecordObject(catalog, "Change Active Screenshot Source");
                     ScreenshotCatalogUtility.AddSourceVersion(slot, texture);
+                }, index =>
+                {
+                    Undo.RecordObject(catalog, "Untrack Screenshot Source Version");
+                    ScreenshotCatalogUtility.RemoveSourceVersion(slot, index);
                 });
             }
 
@@ -437,6 +484,10 @@ namespace SkatanicStudios
                 {
                     Undo.RecordObject(catalog, "Change Final Screenshot Asset");
                     ScreenshotCatalogUtility.AddFinalVersion(slot, texture);
+                }, index =>
+                {
+                    Undo.RecordObject(catalog, "Untrack Final Screenshot Version");
+                    ScreenshotCatalogUtility.RemoveFinalVersion(slot, index);
                 });
             }
 
@@ -448,29 +499,58 @@ namespace SkatanicStudios
             EditorGUILayout.EndVertical();
         }
 
-        private void DrawVersionField(string label, System.Collections.Generic.List<Texture2D> versions, Texture2D active, Action<Texture2D> assign)
+        private void DrawVersionField(
+            string label,
+            System.Collections.Generic.List<Texture2D> versions,
+            Texture2D active,
+            Action<Texture2D> assign,
+            Action<int> remove)
         {
             EditorGUI.BeginChangeCheck();
-            Texture2D selected = (Texture2D)EditorGUILayout.ObjectField(label, active, typeof(Texture2D), false);
+            string assetTooltip = label == "Source"
+                ? "Active raw capture for this slot. Assign an existing PNG or capture a new managed version."
+                : "Active externally prepared final PNG. Capture Then Final and External workflows require this asset for completion.";
+            Texture2D selected = (Texture2D)EditorGUILayout.ObjectField(
+                Tip(label, assetTooltip),
+                active,
+                typeof(Texture2D),
+                false);
             if (EditorGUI.EndChangeCheck())
             {
                 assign(selected);
                 EditorUtility.SetDirty(catalog);
             }
 
-            if (versions.Count <= 1)
+            if (versions.Count == 0)
             {
                 return;
             }
 
             string[] labels = versions.Select((texture, index) => texture == null ? "Missing v" + (index + 1) : texture.name).ToArray();
-            int currentIndex = Mathf.Max(0, versions.IndexOf(active));
-            int newIndex = EditorGUILayout.Popup(label + " Version", currentIndex, labels);
+            int currentIndex = versions.IndexOf(active);
+            if (currentIndex < 0)
+            {
+                currentIndex = versions.Count - 1;
+            }
+            EditorGUILayout.BeginHorizontal();
+            int newIndex = EditorGUILayout.Popup(
+                Tip(label + " Version", "Select which retained " + label.ToLowerInvariant() + " version is active for this slot."),
+                currentIndex,
+                labels);
             if (newIndex != currentIndex)
             {
                 assign(versions[newIndex]);
                 EditorUtility.SetDirty(catalog);
             }
+            if (GUILayout.Button(
+                    Tip("Untrack", "Remove the selected version from this catalog's history without deleting its PNG file from the project."),
+                    GUILayout.Width(62f)))
+            {
+                remove(newIndex);
+                EditorUtility.SetDirty(catalog);
+                RepaintContainers();
+            }
+            EditorGUILayout.EndHorizontal();
         }
 
         private void Arm(ScreenshotCatalogCategory category, ScreenshotCatalogRequirement requirement, ScreenshotCatalogSlot slot)
@@ -857,6 +937,28 @@ namespace SkatanicStudios
                 default:
                     return Color.white;
             }
+        }
+
+        private static string GetStatusTooltip(ScreenshotCatalogStatus status)
+        {
+            switch (status)
+            {
+                case ScreenshotCatalogStatus.Complete:
+                    return "This slot has the valid asset required by its workflow.";
+                case ScreenshotCatalogStatus.SourceReady:
+                    return "A valid source capture exists, but this workflow still requires a valid final image.";
+                case ScreenshotCatalogStatus.Invalid:
+                    return "The active asset is missing from disk or does not match the required dimensions, PNG format, or transparency setting.";
+                case ScreenshotCatalogStatus.Obsolete:
+                    return "This entry no longer exists in the synchronized template but is retained because it contains image history.";
+                default:
+                    return "This required slot does not yet have the asset needed by its workflow.";
+            }
+        }
+
+        private static GUIContent Tip(string text, string tooltip)
+        {
+            return new GUIContent(text, tooltip);
         }
 
         private void RepaintContainers()
