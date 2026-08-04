@@ -115,7 +115,7 @@ namespace SkatanicStudios
 
         private void DrawTopBarGUI()
         {
-            bool narrow = position.width < ScreenshotCatalogWindowView.NarrowLayoutThreshold;
+            bool narrow = ScreenshotCatalogWindowView.ShouldWrapTopBar(position.width);
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(6f);
             EditorGUILayout.BeginVertical();
@@ -364,11 +364,11 @@ namespace SkatanicStudios
                 }
             }
             string settingsTooltip = showSettingsPage
-                ? "Return to the selected slot's capture workspace."
+                ? "Close settings and return to the selected slot's capture workspace."
                 : "Open catalog, capture, and Google Drive settings.";
             if (GUILayout.Button(
                     ScreenshotCatalogIcons.Content(
-                        showSettingsPage ? ScreenshotCatalogIcons.Play : ScreenshotCatalogIcons.Settings,
+                        ScreenshotCatalogIcons.Settings,
                         string.Empty,
                         settingsTooltip),
                     EditorStyles.toolbarButton,
@@ -829,14 +829,46 @@ namespace SkatanicStudios
             EditorGUI.DrawRect(rect, new Color(color.r, color.g, color.b, success ? 0.14f : 0.07f));
             GUIStyle style = new GUIStyle(EditorStyles.miniBoldLabel)
             {
-                alignment = TextAnchor.MiddleCenter,
+                alignment = TextAnchor.MiddleLeft,
                 clipping = TextClipping.Clip
             };
             style.normal.textColor = color;
-            GUIContent content = success
-                ? ScreenshotCatalogIcons.Content(ScreenshotCatalogIcons.Check, successLabel, successLabel)
-                : Tip("○  " + failureLabel, failureTooltip);
-            GUI.Label(rect, content, style);
+            if (!success)
+            {
+                style.alignment = TextAnchor.MiddleCenter;
+                GUI.Label(rect, Tip("○  " + failureLabel, failureTooltip), style);
+                return;
+            }
+
+            Texture2D icon = ScreenshotCatalogIcons.Check;
+            GUIContent labelContent = new GUIContent(successLabel, successLabel);
+            float iconSize = 10f;
+            float gap = 4f;
+            float desiredWidth = iconSize + gap + style.CalcSize(labelContent).x;
+            float left = rect.x + Mathf.Max(4f, (rect.width - desiredWidth) * 0.5f);
+            if (icon != null)
+            {
+                Rect iconRect = new Rect(
+                    left,
+                    rect.center.y - iconSize * 0.5f,
+                    iconSize,
+                    iconSize);
+                Color previousColor = GUI.color;
+                GUI.color = color;
+                GUI.DrawTexture(iconRect, icon, ScaleMode.ScaleToFit, true);
+                GUI.color = previousColor;
+            }
+            else
+            {
+                GUI.Label(new Rect(left, rect.y, iconSize, rect.height), "✓", style);
+            }
+
+            Rect labelRect = new Rect(
+                left + iconSize + gap,
+                rect.y,
+                Mathf.Max(0f, rect.xMax - left - iconSize - gap - 3f),
+                rect.height);
+            GUI.Label(labelRect, labelContent, style);
         }
 
         private void DrawHeaderGUI()

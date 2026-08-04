@@ -863,6 +863,16 @@ namespace SkatanicStudios
             Object.DestroyImmediate(template);
         }
 
+        [Test]
+        public void TopBarWrapsBeforeTheMasterDetailLayoutStacks()
+        {
+            Assert.That(ScreenshotCatalogWindowView.ShouldWrapTopBar(783f), Is.True);
+            Assert.That(ScreenshotCatalogWindowView.ShouldWrapTopBar(901f), Is.False);
+            Assert.That(
+                ScreenshotCatalogWindowView.TopBarWrapThreshold,
+                Is.GreaterThan(ScreenshotCatalogWindowView.NarrowLayoutThreshold));
+        }
+
         private static ScreenshotCatalogSlot CreatePersistentSlot(
             out ScreenshotCatalog catalog,
             out ScreenshotTemplate template)

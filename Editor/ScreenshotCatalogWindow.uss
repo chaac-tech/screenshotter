@@ -53,11 +53,17 @@
 
 .screenshot-catalog-category-name {
     flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    -unity-text-overflow-position: end;
     -unity-font-style: bold;
     font-size: 11px;
 }
 
 .screenshot-catalog-category-count {
+    flex-shrink: 0;
     opacity: 0.65;
     font-size: 10px;
 }
@@ -82,6 +88,8 @@
 
 .screenshot-catalog-slot-name {
     flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
     overflow: hidden;
     white-space: nowrap;
     -unity-text-overflow-position: end;
@@ -93,6 +101,7 @@
 }
 
 .screenshot-catalog-slot-armed {
+    flex-shrink: 0;
     width: 39px;
     margin-right: 3px;
     padding-top: 2px;
@@ -106,6 +115,7 @@
 }
 
 .screenshot-catalog-slot-status {
+    flex-shrink: 0;
     width: 69px;
     font-size: 9px;
     -unity-font-style: bold;

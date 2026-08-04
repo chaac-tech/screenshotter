@@ -8,6 +8,12 @@ namespace SkatanicStudios
     internal sealed class ScreenshotCatalogWindowView
     {
         internal const float NarrowLayoutThreshold = 760f;
+        internal const float TopBarWrapThreshold = 860f;
+
+        internal static bool ShouldWrapTopBar(float width)
+        {
+            return width > 0f && width < TopBarWrapThreshold;
+        }
 
         internal readonly IMGUIContainer topBar;
         internal readonly IMGUIContainer navigatorToolbar;
