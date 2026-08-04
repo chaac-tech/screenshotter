@@ -10,5 +10,7 @@ namespace SkatanicStudios
         [SerializeField] internal string outputRoot = "Assets/Screenshots";
         [SerializeField] internal List<string> includedCategoryIds = new List<string>();
         [SerializeField] internal List<ScreenshotCatalogCategory> categories = new List<ScreenshotCatalogCategory>();
+        [SerializeField] internal ScreenshotGoogleDriveProfile googleDriveProfile;
+        [SerializeField] internal List<ScreenshotGoogleDriveBinding> googleDriveBindings = new List<ScreenshotGoogleDriveBinding>();
     }
 }

@@ -33,6 +33,21 @@ Empty obsolete entries are pruned automatically during synchronization, includin
 
 Selecting a catalog in the Project window shows a compact completion summary and requirement review instead of its raw serialized IDs. Use **Open Screenshot Catalog** in that Inspector to continue working with the selected catalog.
 
+## Google Drive sync
+
+Google Drive sync is editor-only and uses an explicit, immutable **Push New** workflow. It uploads tracked source and final versions that have not been uploaded through the selected profile. Existing remote files are never overwritten or deleted.
+
+1. In Google Cloud Console, create or select a project and enable the **Google Drive API**.
+2. Configure the OAuth consent screen. While the app is in Testing mode, add each Google account that will connect from Unity as a test user.
+3. Create an OAuth client with application type **Desktop app**, then download its credentials JSON.
+4. In Unity, create **Assets > Create > Screenshotter > Google Drive Sync Profile**.
+5. Select the profile and use **Load OAuth Credentials JSON...**. Set **Destination Folder** to `root`, a Drive folder ID, or a full Drive folder URL.
+6. Open **Window > Screenshotter > Requirement Catalog**, expand **Google Drive Sync**, and assign the profile.
+7. Select **Connect**, approve access in the browser, and return to Unity. The refresh token is stored locally under `Library/Screenshotter/GoogleDrive` and is not included in the profile asset.
+8. Select **Push New**. Screenshotter creates catalog/category folders below the destination and uploads each pending PNG once.
+
+The profile requests Google Drive access because a folder supplied by ID may predate the app. For a public OAuth application, review Google's OAuth verification requirements before distributing the configured client beyond your organization or test-user list. **Disconnect** removes the local token only. **Untrack** removes a local catalog version only; neither action deletes uploaded Drive files.
+
 ## Installation
 
 **Walkthrough Video**

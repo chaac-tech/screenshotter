@@ -108,6 +108,19 @@ namespace SkatanicStudios
         [SerializeField] internal List<ScreenshotCatalogRequirement> requirements = new List<ScreenshotCatalogRequirement>();
     }
 
+    [Serializable]
+    internal sealed class ScreenshotGoogleDriveBinding
+    {
+        [SerializeField] internal string profileGuid;
+        [SerializeField] internal string slotDefinitionId;
+        [SerializeField] internal bool finalAsset;
+        [SerializeField] internal string localAssetGuid;
+        [SerializeField] internal string driveFileId;
+        [SerializeField] internal string webViewLink;
+        [SerializeField] internal string md5Checksum;
+        [SerializeField] internal long syncedUtcTicks;
+    }
+
     internal static class ScreenshotCatalogUtility
     {
         internal static void EnsureTemplateIds(ScreenshotTemplate template)

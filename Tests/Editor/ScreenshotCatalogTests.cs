@@ -344,6 +344,55 @@ namespace SkatanicStudios
             Assert.That(assetFolder, Is.Null);
         }
 
+        [Test]
+        public void GoogleDriveFolderUrlIsConvertedToFolderId()
+        {
+            string id = ScreenshotGoogleDriveProfileEditor.ExtractFolderId(
+                "https://drive.google.com/drive/folders/1AbCdEf_123?usp=sharing");
+
+            Assert.That(id, Is.EqualTo("1AbCdEf_123"));
+        }
+
+        [Test]
+        public void GoogleDrivePendingUploadsAreScopedToSelectedProfile()
+        {
+            string imagePath = TestFolder + "/drive-source.png";
+            CreatePngAsset(imagePath, 16, 16);
+            Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(imagePath);
+            ScreenshotGoogleDriveProfile firstProfile = ScriptableObject.CreateInstance<ScreenshotGoogleDriveProfile>();
+            ScreenshotGoogleDriveProfile secondProfile = ScriptableObject.CreateInstance<ScreenshotGoogleDriveProfile>();
+            string firstProfilePath = TestFolder + "/drive-profile-a.asset";
+            string secondProfilePath = TestFolder + "/drive-profile-b.asset";
+            AssetDatabase.CreateAsset(firstProfile, firstProfilePath);
+            AssetDatabase.CreateAsset(secondProfile, secondProfilePath);
+
+            ScreenshotCatalog catalog = ScriptableObject.CreateInstance<ScreenshotCatalog>();
+            ScreenshotCatalogCategory category = new ScreenshotCatalogCategory { definitionId = "category", name = "Category" };
+            ScreenshotCatalogRequirement requirement = new ScreenshotCatalogRequirement { definitionId = "requirement", name = "Requirement" };
+            ScreenshotCatalogSlot slot = new ScreenshotCatalogSlot { definitionId = "slot", name = "Slot" };
+            slot.sourceVersions.Add(texture);
+            slot.activeSource = texture;
+            requirement.slots.Add(slot);
+            category.requirements.Add(requirement);
+            catalog.categories.Add(category);
+            catalog.googleDriveProfile = firstProfile;
+            catalog.googleDriveBindings.Add(new ScreenshotGoogleDriveBinding
+            {
+                profileGuid = AssetDatabase.AssetPathToGUID(firstProfilePath),
+                slotDefinitionId = slot.definitionId,
+                localAssetGuid = AssetDatabase.AssetPathToGUID(imagePath),
+                driveFileId = "remote-file"
+            });
+
+            Assert.That(ScreenshotGoogleDriveService.CountPending(catalog), Is.EqualTo(0));
+            Assert.That(ScreenshotGoogleDriveService.IsVersionSynced(catalog, slot, false, texture), Is.True);
+
+            catalog.googleDriveProfile = secondProfile;
+            Assert.That(ScreenshotGoogleDriveService.CountPending(catalog), Is.EqualTo(1));
+            Assert.That(ScreenshotGoogleDriveService.IsVersionSynced(catalog, slot, false, texture), Is.False);
+            Object.DestroyImmediate(catalog);
+        }
+
         private static void CreatePngAsset(string assetPath, int width, int height)
         {
             Texture2D texture = new Texture2D(width, height, TextureFormat.RGB24, false);

@@ -18,6 +18,7 @@ namespace SkatanicStudios
         [SerializeField] private string armedCategoryId;
         [SerializeField] private string armedRequirementId;
         [SerializeField] private string armedSlotId;
+        [SerializeField] private bool showGoogleDriveSync;
         [NonSerialized] private Screenshotter runtimeScreenshotter;
         [NonSerialized] private string cameraSetupWarning;
         [NonSerialized] private string gameViewResolutionWarning;
@@ -27,6 +28,9 @@ namespace SkatanicStudios
         [NonSerialized] private IMGUIContainer headerContainer;
         [NonSerialized] private IMGUIContainer catalogContainer;
         [NonSerialized] private ScrollView catalogScrollView;
+        [NonSerialized] private bool googleDriveBusy;
+        [NonSerialized] private string googleDriveMessage;
+        [NonSerialized] private MessageType googleDriveMessageType;
 
         [MenuItem("Window/Screenshotter/Requirement Catalog")]
         internal static void Open()
@@ -104,6 +108,8 @@ namespace SkatanicStudios
             DrawCatalogConfiguration();
             EditorGUILayout.Space();
             DrawCaptureToolbar();
+            EditorGUILayout.Space();
+            DrawGoogleDriveSync();
         }
 
         private void DrawCatalogGUI()
@@ -389,6 +395,163 @@ namespace SkatanicStudios
             }
         }
 
+        private void DrawGoogleDriveSync()
+        {
+            showGoogleDriveSync = EditorGUILayout.Foldout(
+                showGoogleDriveSync,
+                Tip("Google Drive Sync", "Configure and push locally tracked screenshot versions to Google Drive."),
+                true);
+            if (!showGoogleDriveSync)
+            {
+                return;
+            }
+
+            EditorGUI.indentLevel++;
+            ScreenshotGoogleDriveProfile newProfile = (ScreenshotGoogleDriveProfile)EditorGUILayout.ObjectField(
+                Tip("Sync Profile", "Reusable OAuth and destination-folder settings for Google Drive uploads."),
+                catalog.googleDriveProfile,
+                typeof(ScreenshotGoogleDriveProfile),
+                false);
+            if (newProfile != catalog.googleDriveProfile)
+            {
+                Undo.RecordObject(catalog, "Change Google Drive Sync Profile");
+                catalog.googleDriveProfile = newProfile;
+                EditorUtility.SetDirty(catalog);
+                googleDriveMessage = null;
+            }
+
+            ScreenshotGoogleDriveProfile profile = catalog.googleDriveProfile;
+            if (profile == null)
+            {
+                EditorGUILayout.HelpBox(
+                    "Create a profile with Assets > Create > Screenshotter > Google Drive Sync Profile, configure it in the Inspector, then assign it here.",
+                    MessageType.Info);
+                EditorGUI.indentLevel--;
+                return;
+            }
+
+            EditorGUI.BeginDisabledGroup(true);
+            EditorGUILayout.TextField(
+                Tip("Destination", "Google Drive folder ID configured by the selected sync profile. 'root' means My Drive."),
+                string.IsNullOrWhiteSpace(profile.destinationFolderId) ? "root" : profile.destinationFolderId);
+            EditorGUI.EndDisabledGroup();
+
+            bool configured = ScreenshotGoogleDriveService.IsConfigured(profile);
+            bool authorized = ScreenshotGoogleDriveService.IsAuthorized(profile);
+            int pending = ScreenshotGoogleDriveService.CountPending(catalog);
+            EditorGUILayout.LabelField(
+                Tip("Connection", "Whether this editor has a stored OAuth refresh token for the selected profile."),
+                Tip(!configured ? "Profile not configured" : authorized ? "Connected" : "Not connected", "OAuth tokens are stored locally under Library/Screenshotter."));
+            EditorGUILayout.LabelField(
+                Tip("Pending Uploads", "Tracked source and final versions that do not yet have a Google Drive file binding for this profile."),
+                pending.ToString());
+
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button(Tip("Show Profile", "Select the sync profile in the Inspector to load OAuth credentials or change the destination folder.")))
+            {
+                Selection.activeObject = profile;
+                EditorGUIUtility.PingObject(profile);
+            }
+
+            EditorGUI.BeginDisabledGroup(googleDriveBusy || !configured);
+            if (!authorized)
+            {
+                if (GUILayout.Button(Tip("Connect", "Open Google authorization in the system browser and store the resulting token locally for this project.")))
+                {
+                    ConnectGoogleDrive(profile);
+                }
+            }
+            else if (GUILayout.Button(Tip("Disconnect", "Remove the locally stored OAuth token. This does not revoke access in Google or change uploaded files.")))
+            {
+                ScreenshotGoogleDriveService.Disconnect(profile);
+                googleDriveMessage = "Disconnected from Google Drive on this editor.";
+                googleDriveMessageType = MessageType.Info;
+                RepaintContainers();
+            }
+            EditorGUI.EndDisabledGroup();
+
+            if (GUILayout.Button(Tip("Open Folder", "Open the configured destination folder in Google Drive.")))
+            {
+                Application.OpenURL(ScreenshotGoogleDriveService.GetFolderUrl(profile));
+            }
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUI.BeginDisabledGroup(googleDriveBusy || !configured || !authorized || pending == 0);
+            if (GUILayout.Button(
+                    Tip("Push New (" + pending + ")", "Upload every locally tracked version that has not been uploaded through this profile. Existing Drive files are never overwritten."),
+                    GUILayout.Height(26f)))
+            {
+                PushNewToGoogleDrive();
+            }
+            EditorGUI.EndDisabledGroup();
+
+            if (!string.IsNullOrEmpty(googleDriveMessage))
+            {
+                EditorGUILayout.HelpBox(googleDriveMessage, googleDriveMessageType);
+            }
+            EditorGUI.indentLevel--;
+        }
+
+        private async void ConnectGoogleDrive(ScreenshotGoogleDriveProfile profile)
+        {
+            googleDriveBusy = true;
+            googleDriveMessage = "Waiting for Google authorization in your browser...";
+            googleDriveMessageType = MessageType.Info;
+            RepaintContainers();
+            try
+            {
+                await ScreenshotGoogleDriveService.AuthorizeAsync(profile);
+                googleDriveMessage = "Connected to Google Drive.";
+                googleDriveMessageType = MessageType.Info;
+            }
+            catch (Exception exception)
+            {
+                googleDriveMessage = exception.GetBaseException().Message;
+                googleDriveMessageType = MessageType.Error;
+                Debug.LogException(exception);
+            }
+            finally
+            {
+                googleDriveBusy = false;
+                RepaintContainers();
+            }
+        }
+
+        private async void PushNewToGoogleDrive()
+        {
+            googleDriveBusy = true;
+            googleDriveMessage = "Preparing Google Drive sync...";
+            googleDriveMessageType = MessageType.Info;
+            RepaintContainers();
+            try
+            {
+                ScreenshotGoogleDrivePushResult result = await ScreenshotGoogleDriveService.PushNewAsync(catalog, progress =>
+                {
+                    googleDriveMessage = progress;
+                    googleDriveMessageType = MessageType.Info;
+                    RepaintContainers();
+                });
+                googleDriveMessage = string.Format(
+                    "Uploaded {0} new version{1}. {2} version{3} already synced.",
+                    result.uploaded,
+                    result.uploaded == 1 ? string.Empty : "s",
+                    result.alreadySynced,
+                    result.alreadySynced == 1 ? " was" : "s were");
+                googleDriveMessageType = MessageType.Info;
+            }
+            catch (Exception exception)
+            {
+                googleDriveMessage = exception.GetBaseException().Message;
+                googleDriveMessageType = MessageType.Error;
+                Debug.LogException(exception);
+            }
+            finally
+            {
+                googleDriveBusy = false;
+                RepaintContainers();
+            }
+        }
+
         private void DrawCatalogContents()
         {
             foreach (ScreenshotCatalogCategory category in catalog.categories)
@@ -467,7 +630,7 @@ namespace SkatanicStudios
 
             if (requirement.workflow != ScreenshotAssetWorkflow.External)
             {
-                DrawVersionField("Source", slot.sourceVersions, slot.activeSource, texture =>
+                DrawVersionField("Source", slot, false, slot.sourceVersions, slot.activeSource, texture =>
                 {
                     Undo.RecordObject(catalog, "Change Active Screenshot Source");
                     ScreenshotCatalogUtility.AddSourceVersion(slot, texture);
@@ -480,7 +643,7 @@ namespace SkatanicStudios
 
             if (requirement.workflow != ScreenshotAssetWorkflow.Capture)
             {
-                DrawVersionField("Final", slot.finalVersions, slot.activeFinal, texture =>
+                DrawVersionField("Final", slot, true, slot.finalVersions, slot.activeFinal, texture =>
                 {
                     Undo.RecordObject(catalog, "Change Final Screenshot Asset");
                     ScreenshotCatalogUtility.AddFinalVersion(slot, texture);
@@ -501,6 +664,8 @@ namespace SkatanicStudios
 
         private void DrawVersionField(
             string label,
+            ScreenshotCatalogSlot slot,
+            bool finalAsset,
             System.Collections.Generic.List<Texture2D> versions,
             Texture2D active,
             Action<Texture2D> assign,
@@ -542,6 +707,16 @@ namespace SkatanicStudios
                 assign(versions[newIndex]);
                 EditorUtility.SetDirty(catalog);
             }
+            bool synced = ScreenshotGoogleDriveService.IsVersionSynced(catalog, slot, finalAsset, versions[newIndex]);
+            Color previousColor = GUI.color;
+            GUI.color = synced ? new Color(0.35f, 0.8f, 0.4f) : new Color(0.95f, 0.75f, 0.25f);
+            GUILayout.Label(
+                Tip(synced ? "Drive" : "Local", synced
+                    ? "This version has a Google Drive file binding for the selected sync profile."
+                    : "This version has not been uploaded through the selected sync profile."),
+                EditorStyles.miniBoldLabel,
+                GUILayout.Width(38f));
+            GUI.color = previousColor;
             if (GUILayout.Button(
                     Tip("Untrack", "Remove the selected version from this catalog's history without deleting its PNG file from the project."),
                     GUILayout.Width(62f)))
