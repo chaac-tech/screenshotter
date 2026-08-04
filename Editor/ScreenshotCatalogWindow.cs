@@ -18,6 +18,8 @@ namespace SkatanicStudios
         [SerializeField] private string armedCategoryId;
         [SerializeField] private string armedRequirementId;
         [SerializeField] private string armedSlotId;
+        [SerializeField] private bool showCatalogConfiguration = true;
+        [SerializeField] private bool showCaptureConfiguration = true;
         [SerializeField] private bool showGoogleDriveSync;
         [NonSerialized] private Screenshotter runtimeScreenshotter;
         [NonSerialized] private string cameraSetupWarning;
@@ -96,20 +98,29 @@ namespace SkatanicStudios
 
         private void DrawHeaderGUI()
         {
-            DrawAssetSelection();
-            EditorGUILayout.Space();
-
-            if (catalog == null)
+            float previousLabelWidth = EditorGUIUtility.labelWidth;
+            EditorGUIUtility.labelWidth = Mathf.Min(155f, Mathf.Max(120f, position.width * 0.32f));
+            try
             {
-                EditorGUILayout.HelpBox("Select or create a catalog to begin tracking required images.", MessageType.Info);
-                return;
-            }
+                DrawAssetSelection();
+                EditorGUILayout.Space(3f);
 
-            DrawCatalogConfiguration();
-            EditorGUILayout.Space();
-            DrawCaptureToolbar();
-            EditorGUILayout.Space();
-            DrawGoogleDriveSync();
+                if (catalog == null)
+                {
+                    EditorGUILayout.HelpBox("Select or create a catalog to begin tracking required images.", MessageType.Info);
+                    return;
+                }
+
+                DrawCatalogConfiguration();
+                EditorGUILayout.Space(3f);
+                DrawCaptureToolbar();
+                EditorGUILayout.Space(3f);
+                DrawGoogleDriveSync();
+            }
+            finally
+            {
+                EditorGUIUtility.labelWidth = previousLabelWidth;
+            }
         }
 
         private void DrawCatalogGUI()
@@ -123,6 +134,7 @@ namespace SkatanicStudios
 
         private void DrawAssetSelection()
         {
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.LabelField(Tip("Assets", "Select the catalog and master template that define this capture session."), EditorStyles.boldLabel);
             ScreenshotCatalog newCatalog = (ScreenshotCatalog)EditorGUILayout.ObjectField(
                 Tip("Catalog", "The per-project, campaign, or release asset that tracks required slots, capture history, and final deliverables."),
@@ -146,6 +158,7 @@ namespace SkatanicStudios
                     "Create catalogs from Assets > Create > Screenshotter > Catalog, then select one here.",
                     MessageType.Info);
             }
+            EditorGUILayout.EndVertical();
         }
 
         private void DrawTemplateDropdown()
@@ -193,7 +206,20 @@ namespace SkatanicStudios
 
         private void DrawCatalogConfiguration()
         {
-            EditorGUILayout.LabelField(Tip("Catalog Configuration", "Choose where managed captures are saved and which template categories this catalog tracks."), EditorStyles.boldLabel);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            string includedSummary = catalog.template == null
+                ? "No template"
+                : catalog.includedCategoryIds.Count + " categor" + (catalog.includedCategoryIds.Count == 1 ? "y" : "ies");
+            showCatalogConfiguration = DrawSectionFoldout(
+                showCatalogConfiguration,
+                Tip("Catalog Configuration  ·  " + includedSummary, "Choose where managed captures are saved and which template categories this catalog tracks."));
+            if (!showCatalogConfiguration)
+            {
+                EditorGUILayout.EndVertical();
+                return;
+            }
+
+            EditorGUILayout.Space(2f);
             EditorGUILayout.BeginHorizontal();
             EditorGUI.BeginDisabledGroup(true);
             EditorGUILayout.TextField(
@@ -214,6 +240,7 @@ namespace SkatanicStudios
             if (catalog.template == null)
             {
                 EditorGUILayout.HelpBox("This catalog has no master template.", MessageType.Error);
+                EditorGUILayout.EndVertical();
                 return;
             }
 
@@ -250,6 +277,7 @@ namespace SkatanicStudios
                 AssetDatabase.SaveAssets();
                 RepaintContainers();
             }
+            EditorGUILayout.EndVertical();
         }
 
         private void SelectOutputRoot()
@@ -283,7 +311,23 @@ namespace SkatanicStudios
 
         private void DrawCaptureToolbar()
         {
-            EditorGUILayout.LabelField(Tip("Capture", "Configure the scene camera and input used to capture the armed catalog slot."), EditorStyles.boldLabel);
+            ScreenshotCatalogRequirement requirement;
+            ScreenshotCatalogSlot slot;
+            ScreenshotCatalogCategory category;
+            bool armed = TryGetArmedSlot(out category, out requirement, out slot);
+            string armedSummary = armed ? requirement.name + " / " + slot.name : "Nothing armed";
+
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            showCaptureConfiguration = DrawSectionFoldout(
+                showCaptureConfiguration,
+                Tip("Capture  ·  " + armedSummary, "Configure the scene camera and input used to capture the armed catalog slot."));
+            if (!showCaptureConfiguration)
+            {
+                EditorGUILayout.EndVertical();
+                return;
+            }
+
+            EditorGUILayout.Space(2f);
             Camera newCamera = (Camera)EditorGUILayout.ObjectField(
                 Tip("Camera", "Scene Camera used to render managed screenshots. The sole active Camera is selected automatically when possible."),
                 captureCamera,
@@ -354,10 +398,6 @@ namespace SkatanicStudios
                 }
             }
 
-            ScreenshotCatalogRequirement requirement;
-            ScreenshotCatalogSlot slot;
-            ScreenshotCatalogCategory category;
-            bool armed = TryGetArmedSlot(out category, out requirement, out slot);
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField(
                 Tip("Armed Slot", "The catalog slot that will receive the next managed capture."),
@@ -371,12 +411,12 @@ namespace SkatanicStudios
             EditorGUILayout.EndHorizontal();
 
             EditorGUI.BeginDisabledGroup(!armed || captureCamera == null || !EditorApplication.isPlaying || !IsValidOutputRoot(catalog.outputRoot));
-            string captureButtonLabel = "Capture Armed Slot";
-            if (captureActionReference != null && captureActionReference.action != null)
+            string captureButtonLabel = armed ? "Capture Armed Slot" : "Select a slot below to capture";
+            if (armed && captureActionReference != null && captureActionReference.action != null)
             {
                 captureButtonLabel += " (" + captureActionReference.action.name + ")";
             }
-            else if (useScreenshotter)
+            else if (armed && useScreenshotter)
             {
                 captureButtonLabel += " (F12)";
             }
@@ -393,16 +433,28 @@ namespace SkatanicStudios
                     : "Enter Play Mode to capture directly from the selected Camera without adding Screenshotter components.";
                 EditorGUILayout.HelpBox(playModeMessage, MessageType.Info);
             }
+            EditorGUILayout.EndVertical();
         }
 
         private void DrawGoogleDriveSync()
         {
-            showGoogleDriveSync = EditorGUILayout.Foldout(
+            ScreenshotGoogleDriveProfile currentProfile = catalog.googleDriveProfile;
+            bool currentConfigured = ScreenshotGoogleDriveService.IsConfigured(currentProfile);
+            bool currentAuthorized = currentProfile != null && ScreenshotGoogleDriveService.IsAuthorized(currentProfile);
+            int currentPending = currentProfile == null ? 0 : ScreenshotGoogleDriveService.CountPending(catalog);
+            string driveSummary = currentProfile == null
+                ? "Not configured"
+                : !currentConfigured ? "Profile incomplete"
+                : !currentAuthorized ? "Disconnected"
+                : currentPending == 0 ? "Up to date" : currentPending + " pending";
+
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            showGoogleDriveSync = DrawSectionFoldout(
                 showGoogleDriveSync,
-                Tip("Google Drive Sync", "Configure and push locally tracked screenshot versions to Google Drive."),
-                true);
+                Tip("Google Drive Sync  ·  " + driveSummary, "Configure and push locally tracked screenshot versions to Google Drive."));
             if (!showGoogleDriveSync)
             {
+                EditorGUILayout.EndVertical();
                 return;
             }
 
@@ -427,6 +479,7 @@ namespace SkatanicStudios
                     "Create a profile with Assets > Create > Screenshotter > Google Drive Sync Profile, configure it in the Inspector, then assign it here.",
                     MessageType.Info);
                 EditorGUI.indentLevel--;
+                EditorGUILayout.EndVertical();
                 return;
             }
 
@@ -439,22 +492,28 @@ namespace SkatanicStudios
             bool configured = ScreenshotGoogleDriveService.IsConfigured(profile);
             bool authorized = ScreenshotGoogleDriveService.IsAuthorized(profile);
             int pending = ScreenshotGoogleDriveService.CountPending(catalog);
+            EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField(
-                Tip("Connection", "Whether this editor has a stored OAuth refresh token for the selected profile."),
-                Tip(!configured ? "Profile not configured" : authorized ? "Connected" : "Not connected", "OAuth tokens are stored locally under Library/Screenshotter."));
-            Color previousContentColor = GUI.contentColor;
-            GUI.contentColor = pending == 0
-                ? new Color(0.35f, 0.8f, 0.4f)
-                : new Color(0.95f, 0.75f, 0.25f);
-            EditorGUILayout.LabelField(
-                Tip("Sync Status", "Whether tracked source and final versions still need to be uploaded through this profile."),
-                Tip(pending == 0 ? "Up to date" : pending + " pending", pending == 0
+                Tip("Connection", "Whether this editor has a stored OAuth refresh token for the selected profile."));
+            DrawTextBadge(
+                !configured ? "Profile incomplete" : authorized ? "Connected" : "Disconnected",
+                configured && authorized ? new Color(0.35f, 0.8f, 0.4f) : new Color(0.95f, 0.55f, 0.25f),
+                "OAuth tokens are stored locally under Library/Screenshotter.");
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField(Tip("Sync Status", "Whether tracked source and final versions still need to be uploaded through this profile."));
+            DrawTextBadge(
+                pending == 0 ? "Up to date" : pending + " pending",
+                pending == 0 ? new Color(0.35f, 0.8f, 0.4f) : new Color(0.95f, 0.75f, 0.25f),
+                pending == 0
                     ? "Every locally tracked version has a Google Drive file binding for this profile."
-                    : "These locally tracked versions have not yet been uploaded through this profile."));
-            GUI.contentColor = previousContentColor;
+                    : "These locally tracked versions have not yet been uploaded through this profile.");
+            EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button(Tip("Show Profile", "Select the sync profile in the Inspector to load OAuth credentials or change the destination folder.")))
+            if (GUILayout.Button(
+                    Tip("Show Profile", "Select the sync profile in the Inspector to load OAuth credentials or change the destination folder."),
+                    EditorStyles.miniButtonLeft))
             {
                 Selection.activeObject = profile;
                 EditorGUIUtility.PingObject(profile);
@@ -463,12 +522,16 @@ namespace SkatanicStudios
             EditorGUI.BeginDisabledGroup(googleDriveBusy || !configured);
             if (!authorized)
             {
-                if (GUILayout.Button(Tip("Connect", "Open Google authorization in the system browser and store the resulting token locally for this project.")))
+                if (GUILayout.Button(
+                        Tip("Connect", "Open Google authorization in the system browser and store the resulting token locally for this project."),
+                        EditorStyles.miniButtonMid))
                 {
                     ConnectGoogleDrive(profile);
                 }
             }
-            else if (GUILayout.Button(Tip("Disconnect", "Remove the locally stored OAuth token. This does not revoke access in Google or change uploaded files.")))
+            else if (GUILayout.Button(
+                         Tip("Disconnect", "Remove the locally stored OAuth token. This does not revoke access in Google or change uploaded files."),
+                         EditorStyles.miniButtonMid))
             {
                 ScreenshotGoogleDriveService.Disconnect(profile);
                 googleDriveMessage = "Disconnected from Google Drive on this editor.";
@@ -477,26 +540,32 @@ namespace SkatanicStudios
             }
             EditorGUI.EndDisabledGroup();
 
-            if (GUILayout.Button(Tip("Open Folder", "Open the configured destination folder in Google Drive.")))
+            if (GUILayout.Button(
+                    Tip("Open Folder", "Open the configured destination folder in Google Drive."),
+                    EditorStyles.miniButtonRight))
             {
                 Application.OpenURL(ScreenshotGoogleDriveService.GetFolderUrl(profile));
             }
             EditorGUILayout.EndHorizontal();
 
-            EditorGUI.BeginDisabledGroup(googleDriveBusy || !configured || !authorized || pending == 0);
-            if (GUILayout.Button(
-                    Tip("Push New (" + pending + ")", "Upload every locally tracked version that has not been uploaded through this profile. Existing Drive files are never overwritten."),
-                    GUILayout.Height(26f)))
+            if (pending > 0)
             {
-                PushNewToGoogleDrive();
+                EditorGUI.BeginDisabledGroup(googleDriveBusy || !configured || !authorized);
+                if (GUILayout.Button(
+                        Tip("Push " + pending + " New Version" + (pending == 1 ? string.Empty : "s"), "Upload every locally tracked version that has not been uploaded through this profile. Existing Drive files are never overwritten."),
+                        GUILayout.Height(26f)))
+                {
+                    PushNewToGoogleDrive();
+                }
+                EditorGUI.EndDisabledGroup();
             }
-            EditorGUI.EndDisabledGroup();
 
             if (!string.IsNullOrEmpty(googleDriveMessage))
             {
                 EditorGUILayout.HelpBox(googleDriveMessage, googleDriveMessageType);
             }
             EditorGUI.indentLevel--;
+            EditorGUILayout.EndVertical();
         }
 
         private async void ConnectGoogleDrive(ScreenshotGoogleDriveProfile profile)
@@ -561,12 +630,55 @@ namespace SkatanicStudios
 
         private void DrawCatalogContents()
         {
-            foreach (ScreenshotCatalogCategory category in catalog.categories)
+            ScreenshotCatalogCategory[] categories = catalog.categories.ToArray();
+            var entries = categories
+                .SelectMany(category => category.requirements)
+                .SelectMany(requirement => requirement.slots.Select(slot => new
+                {
+                    requirement,
+                    slot,
+                    status = ScreenshotCatalogUtility.GetStatus(requirement, slot)
+                }))
+                .ToArray();
+            int complete = entries.Count(item => item.status == ScreenshotCatalogStatus.Complete);
+            int sourceReady = entries.Count(item => item.status == ScreenshotCatalogStatus.SourceReady);
+            int missing = entries.Count(item => item.status == ScreenshotCatalogStatus.Missing && item.slot.required);
+            int invalid = entries.Count(item => item.status == ScreenshotCatalogStatus.Invalid);
+
+            EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
+            EditorGUILayout.LabelField(
+                Tip("Requirements", "Current completion summary across the selected catalog categories."),
+                EditorStyles.boldLabel,
+                GUILayout.Width(90f));
+            GUILayout.Label(
+                Tip(string.Format("{0} complete  ·  {1} ready  ·  {2} missing  ·  {3} invalid", complete, sourceReady, missing, invalid),
+                    "Complete, source-ready, missing-required, and invalid slot counts."),
+                EditorStyles.miniLabel);
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.Space(2f);
+
+            foreach (ScreenshotCatalogCategory category in categories)
             {
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                ScreenshotCatalogSlot[] categorySlots = category.requirements
+                    .SelectMany(item => item.slots)
+                    .Where(slot => slot.required)
+                    .ToArray();
+                if (categorySlots.Length == 0)
+                {
+                    categorySlots = category.requirements.SelectMany(item => item.slots).ToArray();
+                }
+                int completeCount = category.requirements.Sum(item => item.slots.Count(slot =>
+                    categorySlots.Contains(slot) && ScreenshotCatalogUtility.GetStatus(item, slot) == ScreenshotCatalogStatus.Complete));
+                EditorGUILayout.BeginHorizontal();
                 EditorGUILayout.LabelField(
                     Tip(category.name + (category.obsolete ? " (Obsolete)" : string.Empty), "Catalog category copied from the master template. Obsolete categories are retained because they contain capture history."),
                     EditorStyles.boldLabel);
+                GUILayout.Label(
+                    Tip(completeCount + " / " + categorySlots.Length + " complete", "Number of required slots in this category whose workflow is complete."),
+                    EditorStyles.miniLabel,
+                    GUILayout.Width(92f));
+                EditorGUILayout.EndHorizontal();
                 foreach (ScreenshotCatalogRequirement requirement in category.requirements)
                 {
                     DrawRequirement(category, requirement);
@@ -579,10 +691,21 @@ namespace SkatanicStudios
         private void DrawRequirement(ScreenshotCatalogCategory category, ScreenshotCatalogRequirement requirement)
         {
             EditorGUILayout.BeginVertical("box");
-            string specification = string.Format("{0} — {1}x{2} ({3}) — {4}", requirement.workflow, requirement.width, requirement.height, requirement.dimensionRule, requirement.imageFormat);
+            ScreenshotCatalogStatus aggregateStatus = GetAggregateStatus(requirement);
+            EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField(
                 Tip(requirement.name + (requirement.obsolete ? " (Obsolete)" : string.Empty), "Deliverable requirement copied from the master template."),
                 EditorStyles.miniBoldLabel);
+            DrawStatusBadge(aggregateStatus, ScreenshotCatalogUtility.GetStatusLabel(aggregateStatus));
+            EditorGUILayout.EndHorizontal();
+
+            string specification = string.Format(
+                "{0}  ·  {1} × {2}  ·  {3}  ·  {4}",
+                GetWorkflowLabel(requirement.workflow),
+                requirement.width,
+                requirement.height,
+                requirement.dimensionRule,
+                GetImageFormatLabel(requirement.imageFormat));
             EditorGUILayout.LabelField(
                 Tip(specification, "Workflow, target dimensions, dimension validation rule, and required PNG format."),
                 EditorStyles.miniLabel);
@@ -590,38 +713,44 @@ namespace SkatanicStudios
             {
                 EditorGUILayout.HelpBox(requirement.guidance, MessageType.None);
             }
-            if (!string.IsNullOrWhiteSpace(requirement.sourceUrl) && GUILayout.Button(
-                    Tip("Open Source Guidelines", "Open the specification URL stored by the master template."),
-                    EditorStyles.miniButton))
+            if (!string.IsNullOrWhiteSpace(requirement.sourceUrl))
             {
-                Application.OpenURL(requirement.sourceUrl);
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.FlexibleSpace();
+                if (GUILayout.Button(
+                        Tip("Open Source Guidelines", "Open the specification URL stored by the master template."),
+                        EditorStyles.miniButton,
+                        GUILayout.Width(145f)))
+                {
+                    Application.OpenURL(requirement.sourceUrl);
+                }
+                EditorGUILayout.EndHorizontal();
             }
 
-            for (int index = 0; index < requirement.slots.Count; index++)
+            bool showSlotNames = requirement.slots.Count > 1 ||
+                                 requirement.slots.Any(item => !string.Equals(item.name, requirement.name, StringComparison.OrdinalIgnoreCase));
+            foreach (ScreenshotCatalogSlot slot in requirement.slots)
             {
-                ScreenshotCatalogSlot slot = requirement.slots[index];
-                DrawSlot(category, requirement, slot, index);
+                DrawSlot(category, requirement, slot, showSlotNames);
             }
             EditorGUILayout.EndVertical();
         }
 
-        private void DrawSlot(ScreenshotCatalogCategory category, ScreenshotCatalogRequirement requirement, ScreenshotCatalogSlot slot, int slotIndex)
+        private void DrawSlot(
+            ScreenshotCatalogCategory category,
+            ScreenshotCatalogRequirement requirement,
+            ScreenshotCatalogSlot slot,
+            bool showSlotName)
         {
             ScreenshotCatalogStatus status = ScreenshotCatalogUtility.GetStatus(requirement, slot);
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField(
-                Tip(slot.name + (slot.required ? " *" : string.Empty), slot.required
+                Tip((showSlotName ? slot.name : slot.required ? "Required asset" : "Optional asset") + (slot.required ? " *" : string.Empty), slot.required
                     ? "Required image slot. It contributes to the catalog's missing count until complete."
                     : "Optional image slot. It does not contribute to the catalog's missing count."),
                 GUILayout.MinWidth(150));
-            Color previousColor = GUI.color;
-            GUI.color = GetStatusColor(status);
-            GUILayout.Label(
-                Tip(ScreenshotCatalogUtility.GetStatusLabel(status), GetStatusTooltip(status)),
-                EditorStyles.miniBoldLabel,
-                GUILayout.Width(85));
-            GUI.color = previousColor;
+            DrawStatusBadge(status, ScreenshotCatalogUtility.GetStatusLabel(status));
 
             bool canCapture = !requirement.obsolete && !slot.obsolete && requirement.workflow != ScreenshotAssetWorkflow.External;
             EditorGUI.BeginDisabledGroup(!canCapture);
@@ -1117,8 +1246,84 @@ namespace SkatanicStudios
                 case ScreenshotCatalogStatus.Obsolete:
                     return Color.gray;
                 default:
-                    return Color.white;
+                    return new Color(0.65f, 0.65f, 0.65f);
             }
+        }
+
+        private static ScreenshotCatalogStatus GetAggregateStatus(ScreenshotCatalogRequirement requirement)
+        {
+            if (requirement.obsolete)
+            {
+                return ScreenshotCatalogStatus.Obsolete;
+            }
+
+            ScreenshotCatalogSlot[] relevantSlots = requirement.slots.Where(slot => slot.required).ToArray();
+            if (relevantSlots.Length == 0)
+            {
+                relevantSlots = requirement.slots.ToArray();
+            }
+            ScreenshotCatalogStatus[] statuses = relevantSlots
+                .Select(slot => ScreenshotCatalogUtility.GetStatus(requirement, slot))
+                .ToArray();
+            if (statuses.Any(status => status == ScreenshotCatalogStatus.Invalid))
+            {
+                return ScreenshotCatalogStatus.Invalid;
+            }
+            if (statuses.Any(status => status == ScreenshotCatalogStatus.Missing))
+            {
+                return ScreenshotCatalogStatus.Missing;
+            }
+            if (statuses.Any(status => status == ScreenshotCatalogStatus.SourceReady))
+            {
+                return ScreenshotCatalogStatus.SourceReady;
+            }
+            return statuses.Length == 0 ? ScreenshotCatalogStatus.Missing : ScreenshotCatalogStatus.Complete;
+        }
+
+        private static string GetWorkflowLabel(ScreenshotAssetWorkflow workflow)
+        {
+            switch (workflow)
+            {
+                case ScreenshotAssetWorkflow.CaptureThenFinal:
+                    return "Capture → Final";
+                case ScreenshotAssetWorkflow.External:
+                    return "External Final";
+                default:
+                    return "Capture";
+            }
+        }
+
+        private static string GetImageFormatLabel(ScreenshotImageFormat format)
+        {
+            return format == ScreenshotImageFormat.Png32 ? "PNG32" : "PNG24";
+        }
+
+        private static bool DrawSectionFoldout(bool expanded, GUIContent content)
+        {
+            GUIStyle style = new GUIStyle(EditorStyles.foldout)
+            {
+                fontStyle = FontStyle.Bold
+            };
+            return EditorGUILayout.Foldout(expanded, content, true, style);
+        }
+
+        private static void DrawStatusBadge(ScreenshotCatalogStatus status, string label)
+        {
+            DrawTextBadge(label, GetStatusColor(status), GetStatusTooltip(status));
+        }
+
+        private static void DrawTextBadge(string label, Color color, string tooltip)
+        {
+            Color previousBackgroundColor = GUI.backgroundColor;
+            Color previousContentColor = GUI.contentColor;
+            GUI.backgroundColor = color;
+            GUI.contentColor = Color.white;
+            GUILayout.Label(
+                Tip(label, tooltip),
+                EditorStyles.miniButton,
+                GUILayout.Width(Mathf.Max(72f, EditorStyles.miniButton.CalcSize(new GUIContent(label)).x + 12f)));
+            GUI.backgroundColor = previousBackgroundColor;
+            GUI.contentColor = previousContentColor;
         }
 
         private static string GetStatusTooltip(ScreenshotCatalogStatus status)
