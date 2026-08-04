@@ -442,9 +442,16 @@ namespace SkatanicStudios
             EditorGUILayout.LabelField(
                 Tip("Connection", "Whether this editor has a stored OAuth refresh token for the selected profile."),
                 Tip(!configured ? "Profile not configured" : authorized ? "Connected" : "Not connected", "OAuth tokens are stored locally under Library/Screenshotter."));
+            Color previousContentColor = GUI.contentColor;
+            GUI.contentColor = pending == 0
+                ? new Color(0.35f, 0.8f, 0.4f)
+                : new Color(0.95f, 0.75f, 0.25f);
             EditorGUILayout.LabelField(
-                Tip("Pending Uploads", "Tracked source and final versions that do not yet have a Google Drive file binding for this profile."),
-                pending.ToString());
+                Tip("Sync Status", "Whether tracked source and final versions still need to be uploaded through this profile."),
+                Tip(pending == 0 ? "Up to date" : pending + " pending", pending == 0
+                    ? "Every locally tracked version has a Google Drive file binding for this profile."
+                    : "These locally tracked versions have not yet been uploaded through this profile."));
+            GUI.contentColor = previousContentColor;
 
             EditorGUILayout.BeginHorizontal();
             if (GUILayout.Button(Tip("Show Profile", "Select the sync profile in the Inspector to load OAuth credentials or change the destination folder.")))

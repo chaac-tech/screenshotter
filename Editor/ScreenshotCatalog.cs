@@ -9,8 +9,13 @@ namespace SkatanicStudios
         [SerializeField] internal ScreenshotTemplate template;
         [SerializeField] internal string outputRoot = "Assets/Screenshots";
         [SerializeField] internal List<string> includedCategoryIds = new List<string>();
-        [SerializeField] internal List<ScreenshotCatalogCategory> categories = new List<ScreenshotCatalogCategory>();
+        [SerializeField] internal List<ScreenshotCatalogRequirementState> requirementStates = new List<ScreenshotCatalogRequirementState>();
         [SerializeField] internal ScreenshotGoogleDriveProfile googleDriveProfile;
         [SerializeField] internal List<ScreenshotGoogleDriveBinding> googleDriveBindings = new List<ScreenshotGoogleDriveBinding>();
+
+        internal List<ScreenshotCatalogCategory> categories
+        {
+            get { return ScreenshotCatalogUtility.ResolveCategories(this); }
+        }
     }
 }

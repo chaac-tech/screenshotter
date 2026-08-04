@@ -69,15 +69,18 @@ namespace SkatanicStudios
             ScreenshotCatalogRequirement requirement = catalog.categories[0].requirements[0];
             ScreenshotCatalogSlot slot = requirement.slots[0];
             Texture2D version = new Texture2D(2, 2);
-            slot.sourceVersions.Add(version);
-            slot.activeSource = version;
+            ScreenshotCatalogUtility.AddSourceVersion(slot, version);
 
             template.categories[0].requirements.RemoveAt(0);
             ScreenshotCatalogUtility.Synchronize(catalog);
 
-            Assert.That(requirement.obsolete, Is.True);
-            Assert.That(slot.sourceVersions.Single(), Is.SameAs(version));
-            Assert.That(slot.activeSource, Is.SameAs(version));
+            ScreenshotCatalogRequirement obsoleteRequirement = catalog.categories
+                .SelectMany(category => category.requirements)
+                .Single(item => item.obsolete);
+            ScreenshotCatalogSlot obsoleteSlot = obsoleteRequirement.slots.Single();
+            Assert.That(obsoleteRequirement.obsolete, Is.True);
+            Assert.That(obsoleteSlot.sourceVersions.Single(), Is.SameAs(version));
+            Assert.That(obsoleteSlot.activeSource, Is.SameAs(version));
             Object.DestroyImmediate(version);
             Object.DestroyImmediate(catalog);
             Object.DestroyImmediate(template);
@@ -102,26 +105,73 @@ namespace SkatanicStudios
         [Test]
         public void PruneEmptyObsoleteKeepsEntriesWithVersionHistory()
         {
+            ScreenshotTemplate template = ScreenshotTemplatePresets.CreateMetaMasterTemplate();
             ScreenshotCatalog catalog = ScriptableObject.CreateInstance<ScreenshotCatalog>();
-            ScreenshotCatalogCategory category = new ScreenshotCatalogCategory { obsolete = true };
-            ScreenshotCatalogRequirement emptyRequirement = new ScreenshotCatalogRequirement { obsolete = true };
-            emptyRequirement.slots.Add(new ScreenshotCatalogSlot { obsolete = true });
-            ScreenshotCatalogRequirement assignedRequirement = new ScreenshotCatalogRequirement { obsolete = true };
+            ScreenshotCatalogUtility.InitializeCatalog(catalog, template);
+            ScreenshotCatalogSlot slot = catalog.categories[0].requirements[0].slots[0];
             Texture2D version = new Texture2D(2, 2);
-            ScreenshotCatalogSlot assignedSlot = new ScreenshotCatalogSlot { obsolete = true };
-            assignedSlot.sourceVersions.Add(version);
-            assignedRequirement.slots.Add(assignedSlot);
-            category.requirements.Add(emptyRequirement);
-            category.requirements.Add(assignedRequirement);
-            catalog.categories.Add(category);
+            ScreenshotCatalogUtility.AddSourceVersion(slot, version);
+            catalog.requirementStates.Add(new ScreenshotCatalogRequirementState
+            {
+                definitionId = "empty",
+                slots = { new ScreenshotCatalogSlotState { definitionId = "empty-slot" } }
+            });
 
             int removed = ScreenshotCatalogUtility.PruneEmptyObsolete(catalog);
 
             Assert.That(removed, Is.EqualTo(2));
-            Assert.That(catalog.categories.Single(), Is.SameAs(category));
-            Assert.That(category.requirements.Single(), Is.SameAs(assignedRequirement));
+            Assert.That(catalog.requirementStates.Count, Is.EqualTo(1));
+            Assert.That(catalog.requirementStates[0].slots.Single().sourceVersions.Single(), Is.SameAs(version));
             Object.DestroyImmediate(version);
             Object.DestroyImmediate(catalog);
+            Object.DestroyImmediate(template);
+        }
+
+        [Test]
+        public void EmptyCatalogSerializesWithoutTemplateRequirementSnapshots()
+        {
+            ScreenshotTemplate template = ScreenshotTemplatePresets.CreateMetaMasterTemplate();
+            ScreenshotCatalog catalog = ScriptableObject.CreateInstance<ScreenshotCatalog>();
+            string templatePath = TestFolder + "/compact-template.asset";
+            string catalogPath = TestFolder + "/compact-catalog.asset";
+            AssetDatabase.CreateAsset(template, templatePath);
+            AssetDatabase.CreateAsset(catalog, catalogPath);
+            ScreenshotCatalogUtility.InitializeCatalog(catalog, template);
+            AssetDatabase.SaveAssets();
+
+            string yaml = File.ReadAllText(Path.Combine(Directory.GetParent(Application.dataPath).FullName, catalogPath));
+
+            Assert.That(yaml, Does.Contain("requirementStates: []"));
+            Assert.That(yaml, Does.Not.Contain("guidance:"));
+            Assert.That(yaml, Does.Not.Contain("sourceVersions:"));
+            Assert.That(yaml, Does.Not.Contain("categories:"));
+        }
+
+        [Test]
+        public void PopulatedCatalogSerializesOnlyItsTrackedSlotState()
+        {
+            string imagePath = TestFolder + "/tracked.png";
+            CreatePngAsset(imagePath, 8, 8);
+            Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(imagePath);
+            ScreenshotTemplate template = ScreenshotTemplatePresets.CreateMetaMasterTemplate();
+            ScreenshotCatalog catalog = ScriptableObject.CreateInstance<ScreenshotCatalog>();
+            string templatePath = TestFolder + "/tracked-template.asset";
+            string catalogPath = TestFolder + "/tracked-catalog.asset";
+            AssetDatabase.CreateAsset(template, templatePath);
+            AssetDatabase.CreateAsset(catalog, catalogPath);
+            ScreenshotCatalogUtility.InitializeCatalog(catalog, template);
+            ScreenshotCatalogSlot slot = catalog.categories[0].requirements[0].slots[0];
+            ScreenshotCatalogUtility.AddSourceVersion(slot, texture);
+            AssetDatabase.SaveAssets();
+
+            string yaml = File.ReadAllText(Path.Combine(Directory.GetParent(Application.dataPath).FullName, catalogPath));
+
+            Assert.That(catalog.requirementStates.Count, Is.EqualTo(1));
+            Assert.That(catalog.requirementStates[0].slots.Count, Is.EqualTo(1));
+            Assert.That(yaml, Does.Contain("activeSourceIndex: 0"));
+            Assert.That(yaml, Does.Not.Contain("activeSource:"));
+            Assert.That(yaml, Does.Not.Contain("webViewLink:"));
+            Assert.That(catalog.categories[0].requirements[0].slots[0].activeSource, Is.SameAs(texture));
         }
 
         [Test]
@@ -366,15 +416,16 @@ namespace SkatanicStudios
             AssetDatabase.CreateAsset(firstProfile, firstProfilePath);
             AssetDatabase.CreateAsset(secondProfile, secondProfilePath);
 
+            ScreenshotTemplate template = ScriptableObject.CreateInstance<ScreenshotTemplate>();
+            ScreenshotCategoryDefinition categoryDefinition = new ScreenshotCategoryDefinition { id = "category", name = "Category" };
+            ScreenshotRequirementDefinition requirementDefinition = new ScreenshotRequirementDefinition { id = "requirement", name = "Requirement" };
+            requirementDefinition.slots.Add(new ScreenshotSlotDefinition { id = "slot", name = "Slot" });
+            categoryDefinition.requirements.Add(requirementDefinition);
+            template.categories.Add(categoryDefinition);
             ScreenshotCatalog catalog = ScriptableObject.CreateInstance<ScreenshotCatalog>();
-            ScreenshotCatalogCategory category = new ScreenshotCatalogCategory { definitionId = "category", name = "Category" };
-            ScreenshotCatalogRequirement requirement = new ScreenshotCatalogRequirement { definitionId = "requirement", name = "Requirement" };
-            ScreenshotCatalogSlot slot = new ScreenshotCatalogSlot { definitionId = "slot", name = "Slot" };
-            slot.sourceVersions.Add(texture);
-            slot.activeSource = texture;
-            requirement.slots.Add(slot);
-            category.requirements.Add(requirement);
-            catalog.categories.Add(category);
+            ScreenshotCatalogUtility.InitializeCatalog(catalog, template);
+            ScreenshotCatalogSlot slot = catalog.categories.Single().requirements.Single().slots.Single();
+            ScreenshotCatalogUtility.AddSourceVersion(slot, texture);
             catalog.googleDriveProfile = firstProfile;
             catalog.googleDriveBindings.Add(new ScreenshotGoogleDriveBinding
             {
@@ -391,6 +442,7 @@ namespace SkatanicStudios
             Assert.That(ScreenshotGoogleDriveService.CountPending(catalog), Is.EqualTo(1));
             Assert.That(ScreenshotGoogleDriveService.IsVersionSynced(catalog, slot, false, texture), Is.False);
             Object.DestroyImmediate(catalog);
+            Object.DestroyImmediate(template);
         }
 
         private static void CreatePngAsset(string assetPath, int width, int height)

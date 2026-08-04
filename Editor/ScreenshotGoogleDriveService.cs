@@ -272,10 +272,7 @@ namespace SkatanicStudios
                     slotDefinitionId = job.slotId,
                     finalAsset = job.finalAsset,
                     localAssetGuid = job.assetGuid,
-                    driveFileId = uploaded.id,
-                    webViewLink = uploaded.webViewLink,
-                    md5Checksum = !string.IsNullOrEmpty(uploaded.md5Checksum) ? uploaded.md5Checksum : ComputeMd5(job.assetPath),
-                    syncedUtcTicks = DateTime.UtcNow.Ticks
+                    driveFileId = uploaded.id
                 });
                 result.uploaded++;
                 EditorUtility.SetDirty(catalog);
@@ -629,15 +626,6 @@ namespace SkatanicStudios
         {
             string projectRoot = Directory.GetParent(Application.dataPath).FullName;
             return Path.GetFullPath(Path.Combine(projectRoot, assetPath.Replace('/', Path.DirectorySeparatorChar)));
-        }
-
-        private static string ComputeMd5(string assetPath)
-        {
-            using (MD5 md5 = MD5.Create())
-            using (FileStream stream = File.OpenRead(ToAbsoluteAssetPath(assetPath)))
-            {
-                return string.Concat(md5.ComputeHash(stream).Select(value => value.ToString("x2")));
-            }
         }
 
         private static string Encode(string value)
