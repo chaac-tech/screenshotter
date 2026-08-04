@@ -1408,7 +1408,7 @@ namespace SkatanicStudios
                     RepaintContainers();
                 });
                 googleDriveMessage = string.Format(
-                    "Downloaded {0} new version{1}. {2} already synced. {3} unmatched.{4}",
+                    "Downloaded {0} new version{1}. {2} already synced. {3} unmatched.{4}{5}",
                     result.downloaded,
                     result.downloaded == 1 ? string.Empty : "s",
                     result.alreadySynced,
@@ -1416,8 +1416,14 @@ namespace SkatanicStudios
                     result.metadataFailures == 0
                         ? string.Empty
                         : " " + result.metadataFailures + " imported file metadata update" +
-                          (result.metadataFailures == 1 ? " failed." : "s failed."));
-                googleDriveMessageType = result.unmatched > 0 || result.metadataFailures > 0
+                          (result.metadataFailures == 1 ? " failed." : "s failed."),
+                    result.missingBindingsRemoved == 0
+                        ? string.Empty
+                        : " Cleared " + result.missingBindingsRemoved + " missing Drive link" +
+                          (result.missingBindingsRemoved == 1 ? ". It can now be pushed again."
+                              : "s. They can now be pushed again."));
+                googleDriveMessageType = result.unmatched > 0 || result.metadataFailures > 0 ||
+                                         result.missingBindingsRemoved > 0
                     ? MessageType.Warning
                     : MessageType.Info;
             }

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using NUnit.Framework;
@@ -529,44 +530,145 @@ namespace SkatanicStudios
             catalog.googleDriveProfile = secondProfile;
             Assert.That(ScreenshotGoogleDriveService.CountPending(catalog), Is.EqualTo(1));
             Assert.That(ScreenshotGoogleDriveService.IsVersionSynced(catalog, slot, false, texture), Is.False);
+
+            catalog.googleDriveProfile = firstProfile;
+            int removed = ScreenshotGoogleDriveService.ReconcileMissingBindings(
+                catalog,
+                AssetDatabase.AssetPathToGUID(firstProfilePath),
+                new HashSet<string>());
+            Assert.That(removed, Is.EqualTo(1));
+            Assert.That(ScreenshotGoogleDriveService.CountPending(catalog), Is.EqualTo(1));
+            Assert.That(ScreenshotGoogleDriveService.IsVersionSynced(catalog, slot, false, texture), Is.False);
             Object.DestroyImmediate(catalog);
             Object.DestroyImmediate(template);
         }
 
         [Test]
-        public void GoogleDriveFilenameMatchesRequirementAndSlot()
+        public void GoogleDriveFolderKeysAreStableDistinctAndWithinPropertyLimit()
+        {
+            string first = ScreenshotGoogleDriveService.GetFolderKey(
+                "kind",
+                new string('c', 32),
+                new string('a', 32),
+                new string('r', 32),
+                new string('s', 32),
+                "source");
+            string repeated = ScreenshotGoogleDriveService.GetFolderKey(
+                "kind",
+                new string('c', 32),
+                new string('a', 32),
+                new string('r', 32),
+                new string('s', 32),
+                "source");
+            string different = ScreenshotGoogleDriveService.GetFolderKey(
+                "kind",
+                new string('c', 32),
+                new string('a', 32),
+                new string('r', 32),
+                new string('s', 32),
+                "final");
+
+            Assert.That(repeated, Is.EqualTo(first));
+            Assert.That(different, Is.Not.EqualTo(first));
+            Assert.That(
+                System.Text.Encoding.UTF8.GetByteCount("screenshotterKey") +
+                System.Text.Encoding.UTF8.GetByteCount(first),
+                Is.LessThanOrEqualTo(124));
+        }
+
+        [Test]
+        public void GoogleDrivePullClearsOnlyMissingBindingsForSelectedProfile()
+        {
+            ScreenshotCatalog catalog = ScriptableObject.CreateInstance<ScreenshotCatalog>();
+            catalog.googleDriveBindings.Add(new ScreenshotGoogleDriveBinding
+            {
+                profileGuid = "selected-profile",
+                driveFileId = "still-on-drive"
+            });
+            catalog.googleDriveBindings.Add(new ScreenshotGoogleDriveBinding
+            {
+                profileGuid = "selected-profile",
+                driveFileId = "deleted-from-drive"
+            });
+            catalog.googleDriveBindings.Add(new ScreenshotGoogleDriveBinding
+            {
+                profileGuid = "other-profile",
+                driveFileId = "deleted-from-drive"
+            });
+
+            int removed = ScreenshotGoogleDriveService.ReconcileMissingBindings(
+                catalog,
+                "selected-profile",
+                new HashSet<string> { "still-on-drive" });
+
+            Assert.That(removed, Is.EqualTo(1));
+            Assert.That(catalog.googleDriveBindings, Has.Count.EqualTo(2));
+            Assert.That(catalog.googleDriveBindings.Any(binding =>
+                binding.profileGuid == "selected-profile" && binding.driveFileId == "still-on-drive"), Is.True);
+            Assert.That(catalog.googleDriveBindings.Any(binding =>
+                binding.profileGuid == "other-profile" && binding.driveFileId == "deleted-from-drive"), Is.True);
+            Object.DestroyImmediate(catalog);
+        }
+
+        [Test]
+        public void GoogleDriveSingleSlotHierarchyUsesRequirementFolder()
         {
             ScreenshotCatalogCategory category = new ScreenshotCatalogCategory { name = "Meta Distribution" };
-            ScreenshotCatalogRequirement requirement = new ScreenshotCatalogRequirement { name = "Hero Cover" };
-            ScreenshotCatalogSlot first = new ScreenshotCatalogSlot { name = "First" };
-            ScreenshotCatalogSlot second = new ScreenshotCatalogSlot { name = "Second" };
+            ScreenshotCatalogRequirement requirement = new ScreenshotCatalogRequirement
+            {
+                name = "Hero Cover",
+                workflow = ScreenshotAssetWorkflow.CaptureThenFinal
+            };
+            ScreenshotCatalogSlot slot = new ScreenshotCatalogSlot { name = "Hero Cover" };
+            requirement.slots.Add(slot);
+            category.requirements.Add(requirement);
+
+            string source = ScreenshotGoogleDriveService.GetDriveRelativeFolderPath(
+                category, requirement, slot, false);
+            string final = ScreenshotGoogleDriveService.GetDriveRelativeFolderPath(
+                category, requirement, slot, true);
+
+            Assert.That(source, Is.EqualTo("Meta-Distribution/Hero-Cover/Source"));
+            Assert.That(final, Is.EqualTo("Meta-Distribution/Hero-Cover/Final"));
+            Assert.That(ScreenshotGoogleDriveService.UsesSourceFolder(requirement), Is.True);
+            Assert.That(ScreenshotGoogleDriveService.UsesFinalFolder(requirement), Is.True);
+        }
+
+        [Test]
+        public void GoogleDriveMultiSlotHierarchyAddsSlotFolders()
+        {
+            ScreenshotCatalogCategory category = new ScreenshotCatalogCategory { name = "Meta Distribution" };
+            ScreenshotCatalogRequirement requirement = new ScreenshotCatalogRequirement
+            {
+                name = "Screenshot",
+                workflow = ScreenshotAssetWorkflow.Capture
+            };
+            ScreenshotCatalogSlot first = new ScreenshotCatalogSlot { name = "Screenshot 01" };
+            ScreenshotCatalogSlot second = new ScreenshotCatalogSlot { name = "Screenshot 02" };
             requirement.slots.Add(first);
             requirement.slots.Add(second);
             category.requirements.Add(requirement);
 
-            bool matched = ScreenshotGoogleDriveService.TryMatchRemoteFilename(
-                category, "Hero-Cover-02-v014.png", out ScreenshotCatalogRequirement matchedRequirement,
-                out ScreenshotCatalogSlot matchedSlot);
-
-            Assert.That(matched, Is.True);
-            Assert.That(matchedRequirement, Is.SameAs(requirement));
-            Assert.That(matchedSlot, Is.SameAs(second));
+            Assert.That(
+                ScreenshotGoogleDriveService.GetDriveRelativeFolderPath(category, requirement, first, false),
+                Is.EqualTo("Meta-Distribution/Screenshot/Screenshot-01/Source"));
+            Assert.That(
+                ScreenshotGoogleDriveService.GetDriveRelativeFolderPath(category, requirement, second, false),
+                Is.EqualTo("Meta-Distribution/Screenshot/Screenshot-02/Source"));
+            Assert.That(ScreenshotGoogleDriveService.UsesSourceFolder(requirement), Is.True);
+            Assert.That(ScreenshotGoogleDriveService.UsesFinalFolder(requirement), Is.False);
         }
 
         [Test]
-        public void GoogleDriveFilenameRejectsUnknownAndMalformedVersions()
+        public void GoogleDriveExternalWorkflowOnlyUsesFinalFolder()
         {
-            ScreenshotCatalogCategory category = new ScreenshotCatalogCategory { name = "Category" };
-            ScreenshotCatalogRequirement requirement = new ScreenshotCatalogRequirement { name = "Hero Cover" };
-            requirement.slots.Add(new ScreenshotCatalogSlot { name = "Image" });
-            category.requirements.Add(requirement);
+            ScreenshotCatalogRequirement requirement = new ScreenshotCatalogRequirement
+            {
+                workflow = ScreenshotAssetWorkflow.External
+            };
 
-            Assert.That(ScreenshotGoogleDriveService.TryMatchRemoteFilename(
-                category, "Unknown-01-v001.png", out _, out _), Is.False);
-            Assert.That(ScreenshotGoogleDriveService.TryMatchRemoteFilename(
-                category, "Hero-Cover-01-vLatest.png", out _, out _), Is.False);
-            Assert.That(ScreenshotGoogleDriveService.TryMatchRemoteFilename(
-                category, "Hero-Cover-01-v001.jpg", out _, out _), Is.False);
+            Assert.That(ScreenshotGoogleDriveService.UsesSourceFolder(requirement), Is.False);
+            Assert.That(ScreenshotGoogleDriveService.UsesFinalFolder(requirement), Is.True);
         }
 
         [Test]

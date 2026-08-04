@@ -27,6 +27,7 @@ namespace SkatanicStudios
         internal int alreadySynced;
         internal int unmatched;
         internal int metadataFailures;
+        internal int missingBindingsRemoved;
     }
 
     internal static class ScreenshotGoogleDriveService
@@ -64,18 +65,6 @@ namespace SkatanicStudios
             public string webViewLink;
             public string md5Checksum;
             public string mimeType;
-            public DriveAppProperties appProperties;
-        }
-
-        [Serializable]
-        private sealed class DriveAppProperties
-        {
-            public string screenshotterCatalog;
-            public string screenshotterCategory;
-            public string screenshotterRequirement;
-            public string screenshotterSlot;
-            public string screenshotterKind;
-            public string screenshotterAssetGuid;
         }
 
         [Serializable]
@@ -90,7 +79,10 @@ namespace SkatanicStudios
             internal string categoryId;
             internal string categoryName;
             internal string requirementId;
+            internal string requirementName;
             internal string slotId;
+            internal string slotName;
+            internal bool useSlotFolder;
             internal bool finalAsset;
             internal string assetGuid;
             internal string assetPath;
@@ -269,9 +261,11 @@ namespace SkatanicStudios
                 accessToken,
                 rootFolderId,
                 ScreenshotCatalogUtility.SanitizeName(catalog.name),
-                "catalog:" + catalogGuid);
+                GetFolderKey("catalog", catalogGuid));
 
             Dictionary<string, string> categoryFolders = new Dictionary<string, string>();
+            Dictionary<string, string> requirementFolders = new Dictionary<string, string>();
+            Dictionary<string, string> slotFolders = new Dictionary<string, string>();
             Dictionary<string, string> assetFolders = new Dictionary<string, string>();
             for (int index = 0; index < jobs.Count; index++)
             {
@@ -283,20 +277,47 @@ namespace SkatanicStudios
                         accessToken,
                         catalogFolderId,
                         ScreenshotCatalogUtility.SanitizeName(job.categoryName),
-                        "category:" + catalogGuid + ":" + job.categoryId);
+                        GetFolderKey("category", catalogGuid, job.categoryId));
                     categoryFolders[job.categoryId] = categoryFolderId;
                 }
 
+                string requirementFolderKey = job.categoryId + ":" + job.requirementId;
+                string requirementFolderId;
+                if (!requirementFolders.TryGetValue(requirementFolderKey, out requirementFolderId))
+                {
+                    requirementFolderId = await EnsureFolderAsync(
+                        accessToken,
+                        categoryFolderId,
+                        ScreenshotCatalogUtility.SanitizeName(job.requirementName),
+                        GetRequirementFolderKey(catalogGuid, job.categoryId, job.requirementId));
+                    requirementFolders[requirementFolderKey] = requirementFolderId;
+                }
+
+                string parentFolderId = requirementFolderId;
+                if (job.useSlotFolder)
+                {
+                    string slotFolderKey = requirementFolderKey + ":" + job.slotId;
+                    if (!slotFolders.TryGetValue(slotFolderKey, out parentFolderId))
+                    {
+                        parentFolderId = await EnsureFolderAsync(
+                            accessToken,
+                            requirementFolderId,
+                            ScreenshotCatalogUtility.SanitizeName(job.slotName),
+                            GetSlotFolderKey(catalogGuid, job.categoryId, job.requirementId, job.slotId));
+                        slotFolders[slotFolderKey] = parentFolderId;
+                    }
+                }
+
                 string kind = job.finalAsset ? "final" : "source";
-                string assetFolderKey = job.categoryId + ":" + kind;
+                string assetFolderKey = job.categoryId + ":" + job.requirementId + ":" + job.slotId + ":" + kind;
                 string assetFolderId;
                 if (!assetFolders.TryGetValue(assetFolderKey, out assetFolderId))
                 {
                     assetFolderId = await EnsureFolderAsync(
                         accessToken,
-                        categoryFolderId,
+                        parentFolderId,
                         job.finalAsset ? "Final" : "Source",
-                        "kind:" + catalogGuid + ":" + job.categoryId + ":" + kind);
+                        GetKindFolderKey(catalogGuid, job.categoryId, job.requirementId, job.slotId, kind));
                     assetFolders[assetFolderKey] = assetFolderId;
                 }
 
@@ -337,12 +358,13 @@ namespace SkatanicStudios
             string profileGuid = GetProfileGuid(catalog.googleDriveProfile);
             string rootFolderId = GetDestinationFolderId(catalog.googleDriveProfile);
             ScreenshotGoogleDrivePullResult result = new ScreenshotGoogleDrivePullResult();
+            HashSet<string> remoteFileIds = new HashSet<string>(StringComparer.Ordinal);
             reportProgress?.Invoke("Preparing Drive folders for " + catalog.name + "...");
             string catalogFolderId = await EnsureFolderAsync(
                 accessToken,
                 rootFolderId,
                 ScreenshotCatalogUtility.SanitizeName(catalog.name),
-                "catalog:" + catalogGuid);
+                GetFolderKey("catalog", catalogGuid));
 
             foreach (ScreenshotCatalogCategory category in catalog.categories)
             {
@@ -350,14 +372,53 @@ namespace SkatanicStudios
                     accessToken,
                     catalogFolderId,
                     ScreenshotCatalogUtility.SanitizeName(category.name),
-                    "category:" + catalogGuid + ":" + category.definitionId);
+                    GetFolderKey("category", catalogGuid, category.definitionId));
 
-                await PullFolderAsync(catalog, category, false, accessToken, profileGuid, catalogGuid,
-                    categoryFolderId, result, reportProgress);
-                await PullFolderAsync(catalog, category, true, accessToken, profileGuid, catalogGuid,
-                    categoryFolderId, result, reportProgress);
+                foreach (ScreenshotCatalogRequirement requirement in category.requirements)
+                {
+                    string requirementFolderId = await EnsureFolderAsync(
+                        accessToken,
+                        categoryFolderId,
+                        ScreenshotCatalogUtility.SanitizeName(requirement.name),
+                        GetRequirementFolderKey(
+                            catalogGuid,
+                            category.definitionId,
+                            requirement.definitionId));
+
+                    bool useSlotFolder = requirement.slots.Count > 1;
+                    foreach (ScreenshotCatalogSlot slot in requirement.slots)
+                    {
+                        string parentFolderId = requirementFolderId;
+                        if (useSlotFolder)
+                        {
+                            parentFolderId = await EnsureFolderAsync(
+                                accessToken,
+                                requirementFolderId,
+                                ScreenshotCatalogUtility.SanitizeName(slot.name),
+                                GetSlotFolderKey(
+                                    catalogGuid,
+                                    category.definitionId,
+                                    requirement.definitionId,
+                                    slot.definitionId));
+                        }
+
+                        if (UsesSourceFolder(requirement))
+                        {
+                            await PullFolderAsync(
+                                catalog, category, requirement, slot, false, accessToken, profileGuid,
+                                catalogGuid, parentFolderId, remoteFileIds, result, reportProgress);
+                        }
+                        if (UsesFinalFolder(requirement))
+                        {
+                            await PullFolderAsync(
+                                catalog, category, requirement, slot, true, accessToken, profileGuid,
+                                catalogGuid, parentFolderId, remoteFileIds, result, reportProgress);
+                        }
+                    }
+                }
             }
 
+            result.missingBindingsRemoved = ReconcileMissingBindings(catalog, profileGuid, remoteFileIds);
             EditorUtility.SetDirty(catalog);
             AssetDatabase.SaveAssets();
             reportProgress?.Invoke("Google Drive pull complete.");
@@ -367,35 +428,40 @@ namespace SkatanicStudios
         private static async Task PullFolderAsync(
             ScreenshotCatalog catalog,
             ScreenshotCatalogCategory category,
+            ScreenshotCatalogRequirement requirement,
+            ScreenshotCatalogSlot slot,
             bool finalAsset,
             string accessToken,
             string profileGuid,
             string catalogGuid,
-            string categoryFolderId,
+            string parentFolderId,
+            ISet<string> remoteFileIds,
             ScreenshotGoogleDrivePullResult result,
             Action<string> reportProgress)
         {
             string kind = finalAsset ? "final" : "source";
             string folderId = await EnsureFolderAsync(
                 accessToken,
-                categoryFolderId,
+                parentFolderId,
                 finalAsset ? "Final" : "Source",
-                "kind:" + catalogGuid + ":" + category.definitionId + ":" + kind);
-            List<DriveFile> files = await ListPngFilesAsync(accessToken, folderId);
+                GetKindFolderKey(
+                    catalogGuid,
+                    category.definitionId,
+                    requirement.definitionId,
+                    slot.definitionId,
+                    kind));
+            List<DriveFile> files = await ListFilesAsync(accessToken, folderId);
             foreach (DriveFile file in files.OrderBy(item => item.name, StringComparer.OrdinalIgnoreCase))
             {
+                remoteFileIds.Add(file.id);
                 if (catalog.googleDriveBindings.Any(binding =>
                         binding.profileGuid == profileGuid && binding.driveFileId == file.id))
                 {
                     result.alreadySynced++;
                     continue;
                 }
-
-                ScreenshotCatalogRequirement requirement;
-                ScreenshotCatalogSlot slot;
-                if (!TryMatchRemoteFile(category, file, finalAsset, catalogGuid, out requirement, out slot))
+                if (!string.Equals(Path.GetExtension(file.name), ".png", StringComparison.OrdinalIgnoreCase))
                 {
-                    result.unmatched++;
                     continue;
                 }
 
@@ -448,71 +514,102 @@ namespace SkatanicStudios
             }
         }
 
-        private static bool TryMatchRemoteFile(
-            ScreenshotCatalogCategory category,
-            DriveFile file,
-            bool finalAsset,
-            string catalogGuid,
-            out ScreenshotCatalogRequirement requirement,
-            out ScreenshotCatalogSlot slot)
+        internal static bool UsesSourceFolder(ScreenshotCatalogRequirement requirement)
         {
-            requirement = null;
-            slot = null;
-            DriveAppProperties properties = file.appProperties;
-            if (properties != null &&
-                (string.IsNullOrEmpty(properties.screenshotterCatalog) || properties.screenshotterCatalog == catalogGuid) &&
-                properties.screenshotterCategory == category.definitionId &&
-                properties.screenshotterKind == (finalAsset ? "final" : "source"))
-            {
-                requirement = category.requirements.FirstOrDefault(item => item.definitionId == properties.screenshotterRequirement);
-                slot = requirement == null
-                    ? null
-                    : requirement.slots.FirstOrDefault(item => item.definitionId == properties.screenshotterSlot);
-                if (slot != null)
-                {
-                    return true;
-                }
-            }
-
-            return TryMatchRemoteFilename(category, file.name, out requirement, out slot);
+            return requirement != null && requirement.workflow != ScreenshotAssetWorkflow.External;
         }
 
-        internal static bool TryMatchRemoteFilename(
-            ScreenshotCatalogCategory category,
-            string fileName,
-            out ScreenshotCatalogRequirement requirement,
-            out ScreenshotCatalogSlot slot)
+        internal static bool UsesFinalFolder(ScreenshotCatalogRequirement requirement)
         {
-            requirement = null;
-            slot = null;
-            if (category == null || string.IsNullOrWhiteSpace(fileName) ||
-                !string.Equals(Path.GetExtension(fileName), ".png", StringComparison.OrdinalIgnoreCase))
+            return requirement != null && requirement.workflow != ScreenshotAssetWorkflow.Capture;
+        }
+
+        internal static string GetDriveRelativeFolderPath(
+            ScreenshotCatalogCategory category,
+            ScreenshotCatalogRequirement requirement,
+            ScreenshotCatalogSlot slot,
+            bool finalAsset)
+        {
+            var parts = new List<string>
             {
-                return false;
+                ScreenshotCatalogUtility.SanitizeName(category == null ? null : category.name),
+                ScreenshotCatalogUtility.SanitizeName(requirement == null ? null : requirement.name)
+            };
+            if (requirement != null && requirement.slots.Count > 1)
+            {
+                parts.Add(ScreenshotCatalogUtility.SanitizeName(slot == null ? null : slot.name));
+            }
+            parts.Add(finalAsset ? "Final" : "Source");
+            return string.Join("/", parts.ToArray());
+        }
+
+        private static string GetRequirementFolderKey(string catalogGuid, string categoryId, string requirementId)
+        {
+            return GetFolderKey("requirement", catalogGuid, categoryId, requirementId);
+        }
+
+        private static string GetSlotFolderKey(
+            string catalogGuid,
+            string categoryId,
+            string requirementId,
+            string slotId)
+        {
+            return GetFolderKey("slot", catalogGuid, categoryId, requirementId, slotId);
+        }
+
+        private static string GetKindFolderKey(
+            string catalogGuid,
+            string categoryId,
+            string requirementId,
+            string slotId,
+            string kind)
+        {
+            return GetFolderKey("kind", catalogGuid, categoryId, requirementId, slotId, kind);
+        }
+
+        internal static string GetFolderKey(string scope, params string[] identityParts)
+        {
+            var identity = new StringBuilder(scope ?? string.Empty);
+            foreach (string part in identityParts ?? Array.Empty<string>())
+            {
+                string value = part ?? string.Empty;
+                identity.Append('|').Append(value.Length).Append(':').Append(value);
             }
 
-            string nameWithoutExtension = Path.GetFileNameWithoutExtension(fileName);
-            var matches = category.requirements
-                .SelectMany(candidateRequirement => candidateRequirement.slots.Select((candidateSlot, slotIndex) => new
-                {
-                    requirement = candidateRequirement,
-                    slot = candidateSlot,
-                    prefix = ScreenshotCatalogUtility.SanitizeName(candidateRequirement.name) +
-                             "-" + (slotIndex + 1).ToString("00") + "-v"
-                }))
-                .Where(candidate =>
-                    nameWithoutExtension.StartsWith(candidate.prefix, StringComparison.OrdinalIgnoreCase) &&
-                    nameWithoutExtension.Length > candidate.prefix.Length &&
-                    nameWithoutExtension.Substring(candidate.prefix.Length).All(char.IsDigit))
-                .ToArray();
-            if (matches.Length != 1)
+            byte[] digest;
+            using (SHA256 sha256 = SHA256.Create())
             {
-                return false;
+                digest = sha256.ComputeHash(Encoding.UTF8.GetBytes(identity.ToString()));
             }
 
-            requirement = matches[0].requirement;
-            slot = matches[0].slot;
-            return true;
+            var shortHash = new StringBuilder(32);
+            for (int index = 0; index < 16; index++)
+            {
+                shortHash.Append(digest[index].ToString("x2"));
+            }
+            return (scope ?? "folder") + ":" + shortHash;
+        }
+
+        internal static int ReconcileMissingBindings(
+            ScreenshotCatalog catalog,
+            string profileGuid,
+            ISet<string> remoteFileIds)
+        {
+            if (catalog == null || remoteFileIds == null)
+            {
+                return 0;
+            }
+
+            int removed = catalog.googleDriveBindings.RemoveAll(binding =>
+                binding != null &&
+                binding.profileGuid == profileGuid &&
+                !string.IsNullOrEmpty(binding.driveFileId) &&
+                !remoteFileIds.Contains(binding.driveFileId));
+            if (removed > 0)
+            {
+                EditorUtility.SetDirty(catalog);
+            }
+            return removed;
         }
 
         internal static string GetDownloadAssetPath(
@@ -542,8 +639,14 @@ namespace SkatanicStudios
                 {
                     foreach (ScreenshotCatalogSlot slot in requirement.slots)
                     {
-                        AddJobs(catalog, jobs, category, requirement, slot, slot.sourceVersions, false);
-                        AddJobs(catalog, jobs, category, requirement, slot, slot.finalVersions, true);
+                        if (UsesSourceFolder(requirement))
+                        {
+                            AddJobs(catalog, jobs, category, requirement, slot, slot.sourceVersions, false);
+                        }
+                        if (UsesFinalFolder(requirement))
+                        {
+                            AddJobs(catalog, jobs, category, requirement, slot, slot.finalVersions, true);
+                        }
                     }
                 }
             }
@@ -583,7 +686,10 @@ namespace SkatanicStudios
                     categoryId = category.definitionId,
                     categoryName = category.name,
                     requirementId = requirement.definitionId,
+                    requirementName = requirement.name,
                     slotId = slot.definitionId,
+                    slotName = slot.name,
+                    useSlotFolder = requirement.slots.Count > 1,
                     finalAsset = finalAsset,
                     assetGuid = assetGuid,
                     assetPath = assetPath,
@@ -596,10 +702,13 @@ namespace SkatanicStudios
         {
             return catalog.categories
                 .SelectMany(category => category.requirements)
-                .SelectMany(requirement => requirement.slots)
-                .Sum(slot =>
-                    slot.sourceVersions.Count(texture => ScreenshotCatalogUtility.IsVersionTracked(slot, false, texture)) +
-                    slot.finalVersions.Count(texture => ScreenshotCatalogUtility.IsVersionTracked(slot, true, texture)));
+                .Sum(requirement => requirement.slots.Sum(slot =>
+                    (UsesSourceFolder(requirement)
+                        ? slot.sourceVersions.Count(texture => ScreenshotCatalogUtility.IsVersionTracked(slot, false, texture))
+                        : 0) +
+                    (UsesFinalFolder(requirement)
+                        ? slot.finalVersions.Count(texture => ScreenshotCatalogUtility.IsVersionTracked(slot, true, texture))
+                        : 0)));
         }
 
         private static int CountSyncedVersions(ScreenshotCatalog catalog)
@@ -609,12 +718,18 @@ namespace SkatanicStudios
             {
                 foreach (ScreenshotCatalogSlot slot in requirement.slots)
                 {
-                    count += slot.sourceVersions.Count(texture =>
-                        ScreenshotCatalogUtility.IsVersionTracked(slot, false, texture) &&
-                        IsVersionSynced(catalog, slot, false, texture));
-                    count += slot.finalVersions.Count(texture =>
-                        ScreenshotCatalogUtility.IsVersionTracked(slot, true, texture) &&
-                        IsVersionSynced(catalog, slot, true, texture));
+                    if (UsesSourceFolder(requirement))
+                    {
+                        count += slot.sourceVersions.Count(texture =>
+                            ScreenshotCatalogUtility.IsVersionTracked(slot, false, texture) &&
+                            IsVersionSynced(catalog, slot, false, texture));
+                    }
+                    if (UsesFinalFolder(requirement))
+                    {
+                        count += slot.finalVersions.Count(texture =>
+                            ScreenshotCatalogUtility.IsVersionTracked(slot, true, texture) &&
+                            IsVersionSynced(catalog, slot, true, texture));
+                    }
                 }
             }
             return count;
@@ -713,7 +828,7 @@ namespace SkatanicStudios
             }
         }
 
-        private static async Task<List<DriveFile>> ListPngFilesAsync(string accessToken, string parentId)
+        private static async Task<List<DriveFile>> ListFilesAsync(string accessToken, string parentId)
         {
             List<DriveFile> files = new List<DriveFile>();
             string pageToken = null;
@@ -722,7 +837,7 @@ namespace SkatanicStudios
                 string query = "'" + EscapeDriveQuery(parentId) + "' in parents and trashed = false";
                 string url = DriveFilesEndpoint + "?q=" + Encode(query) +
                              "&spaces=drive&pageSize=1000" +
-                             "&fields=nextPageToken,files(id,name,mimeType,md5Checksum,appProperties)" +
+                             "&fields=nextPageToken,files(id,name,mimeType,md5Checksum)" +
                              "&supportsAllDrives=true&includeItemsFromAllDrives=true";
                 if (!string.IsNullOrEmpty(pageToken))
                 {
@@ -737,9 +852,7 @@ namespace SkatanicStudios
                     DriveFileList page = JsonUtility.FromJson<DriveFileList>(json);
                     if (page != null && page.files != null)
                     {
-                        files.AddRange(page.files.Where(file =>
-                            file != null &&
-                            string.Equals(Path.GetExtension(file.name), ".png", StringComparison.OrdinalIgnoreCase)));
+                        files.AddRange(page.files.Where(file => file != null));
                     }
                     pageToken = page == null ? null : page.nextPageToken;
                 }

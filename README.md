@@ -44,9 +44,24 @@ Google Drive sync is editor-only and uses explicit **Push New** and **Pull New**
 5. Select the profile and use **Load OAuth Credentials JSON...**. Set **Destination Folder** to `root`, a Drive folder ID, or a full Drive folder URL.
 6. Open **Window > Screenshotter > Requirement Catalog**, open **Settings**, expand **Google Drive Sync**, and assign the profile.
 7. Select **Connect**, approve access in the browser, and return to Unity. The refresh token is stored locally under `Library/Screenshotter/GoogleDrive` and is not included in the profile asset.
-8. Select **Push New**. Screenshotter creates `Catalog/Category/Source` and `Catalog/Category/Final` folders below the destination and uploads each pending PNG once.
+8. Select **Pull New** once to initialize the complete catalog folder hierarchy, or **Push New** to create the folders needed by pending uploads. Push uploads every pending PNG once.
 
-To bring an image created outside Unity back into the catalog, place it in the matching category's **Source** or **Final** folder and retain the standard `{Requirement}-{Slot:00}-v{Version:000}.png` name, for example `Hero-Cover-01-v003.png`. Select **Pull New**. The file is imported below the catalog's local category folder, attached to the matching slot, and assigned hidden Drive metadata for later syncs. Files that cannot be matched uniquely are reported and left untouched in Drive.
+Drive folders use `Catalog/Category/Requirement/[Slot]/Source|Final`. A single-slot requirement uses its requirement folder directly; a multi-slot requirement adds one folder per slot. Capture workflows create **Source**, External workflows create **Final**, and Capture Then Final workflows create both. For example:
+
+```text
+Screenshot-Catalog/
+└── Meta-Distribution/
+    ├── Hero-Cover/
+    │   ├── Source/
+    │   └── Final/
+    └── Screenshot/
+        ├── Screenshot-01/
+        │   └── Source/
+        └── Screenshot-02/
+            └── Source/
+```
+
+To bring an image created outside Unity back into the catalog, place any PNG in the appropriate slot's **Source** or **Final** folder and select **Pull New**. The folder identifies the catalog slot, so the filename does not need to follow Screenshotter's generated version pattern. The file is imported below the catalog's local category folder, attached to that slot, and assigned hidden Drive metadata for later syncs.
 
 The profile requests Google Drive access because a folder supplied by ID may predate the app. For a public OAuth application, review Google's OAuth verification requirements before distributing the configured client beyond your organization or test-user list. **Disconnect** removes the local token only. **Untrack** removes a local catalog version only; neither action deletes uploaded Drive files.
 
