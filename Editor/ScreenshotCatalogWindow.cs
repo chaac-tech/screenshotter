@@ -13,7 +13,7 @@ namespace SkatanicStudios
         [SerializeField] private ScreenshotCatalog catalog;
         [SerializeField] private Camera captureCamera;
         [SerializeField] private bool useScreenshotter = true;
-        [SerializeField] private bool matchGameViewResolution;
+        [SerializeField] private bool matchGameViewResolution = true;
         [SerializeField] private InputActionReference captureActionReference;
         [SerializeField] private string armedCategoryId;
         [SerializeField] private string armedRequirementId;
