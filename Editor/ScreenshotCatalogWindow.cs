@@ -468,12 +468,12 @@ namespace SkatanicStudios
                 ? "Not configured"
                 : !currentConfigured ? "Profile incomplete"
                 : !currentAuthorized ? "Disconnected"
-                : currentPending == 0 ? "Up to date" : currentPending + " pending";
+                : currentPending == 0 ? "No uploads pending" : currentPending + " upload" + (currentPending == 1 ? " pending" : "s pending");
 
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             showGoogleDriveSync = DrawSectionFoldout(
                 showGoogleDriveSync,
-                Tip("Google Drive Sync  ·  " + driveSummary, "Configure and push locally tracked screenshot versions to Google Drive."));
+                Tip("Google Drive Sync  ·  " + driveSummary, "Push locally tracked versions to Google Drive or pull matching PNGs from its Source and Final folders."));
             if (!showGoogleDriveSync)
             {
                 EditorGUILayout.EndVertical();
@@ -525,10 +525,10 @@ namespace SkatanicStudios
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField(Tip("Sync Status", "Whether tracked source and final versions still need to be uploaded through this profile."));
             DrawTextBadge(
-                pending == 0 ? "Up to date" : pending + " pending",
+                pending == 0 ? "No uploads pending" : pending + " pending",
                 pending == 0 ? new Color(0.35f, 0.8f, 0.4f) : new Color(0.95f, 0.75f, 0.25f),
                 pending == 0
-                    ? "Every locally tracked version has a Google Drive file binding for this profile."
+                    ? "Every locally tracked version has a Google Drive file binding for this profile. Use Pull New to check for remote additions."
                     : "These locally tracked versions have not yet been uploaded through this profile.");
             EditorGUILayout.EndHorizontal();
 
@@ -570,17 +570,27 @@ namespace SkatanicStudios
             }
             EditorGUILayout.EndHorizontal();
 
-            if (pending > 0)
+            EditorGUI.BeginDisabledGroup(googleDriveBusy || !configured || !authorized);
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button(
+                    Tip("Pull New", "Download new PNG files from each category's Source and Final folders, import them into the project, and attach filenames that match catalog slots."),
+                    GUILayout.Height(26f)))
             {
-                EditorGUI.BeginDisabledGroup(googleDriveBusy || !configured || !authorized);
-                if (GUILayout.Button(
-                        Tip("Push " + pending + " New Version" + (pending == 1 ? string.Empty : "s"), "Upload every locally tracked version that has not been uploaded through this profile. Existing Drive files are never overwritten."),
-                        GUILayout.Height(26f)))
-                {
-                    PushNewToGoogleDrive();
-                }
-                EditorGUI.EndDisabledGroup();
+                PullNewFromGoogleDrive();
             }
+            EditorGUI.BeginDisabledGroup(pending == 0);
+            if (GUILayout.Button(
+                    Tip(pending == 0
+                            ? "Push New (0)"
+                            : "Push " + pending + " New Version" + (pending == 1 ? string.Empty : "s"),
+                        "Upload every locally tracked version that has not been uploaded through this profile. Existing Drive files are never overwritten."),
+                    GUILayout.Height(26f)))
+            {
+                PushNewToGoogleDrive();
+            }
+            EditorGUI.EndDisabledGroup();
+            EditorGUILayout.EndHorizontal();
+            EditorGUI.EndDisabledGroup();
 
             if (!string.IsNullOrEmpty(googleDriveMessage))
             {
@@ -636,6 +646,47 @@ namespace SkatanicStudios
                     result.alreadySynced,
                     result.alreadySynced == 1 ? " was" : "s were");
                 googleDriveMessageType = MessageType.Info;
+            }
+            catch (Exception exception)
+            {
+                googleDriveMessage = exception.GetBaseException().Message;
+                googleDriveMessageType = MessageType.Error;
+                Debug.LogException(exception);
+            }
+            finally
+            {
+                googleDriveBusy = false;
+                RepaintContainers();
+            }
+        }
+
+        private async void PullNewFromGoogleDrive()
+        {
+            googleDriveBusy = true;
+            googleDriveMessage = "Scanning Google Drive Source and Final folders...";
+            googleDriveMessageType = MessageType.Info;
+            RepaintContainers();
+            try
+            {
+                ScreenshotGoogleDrivePullResult result = await ScreenshotGoogleDriveService.PullNewAsync(catalog, progress =>
+                {
+                    googleDriveMessage = progress;
+                    googleDriveMessageType = MessageType.Info;
+                    RepaintContainers();
+                });
+                googleDriveMessage = string.Format(
+                    "Downloaded {0} new version{1}. {2} already synced. {3} unmatched.{4}",
+                    result.downloaded,
+                    result.downloaded == 1 ? string.Empty : "s",
+                    result.alreadySynced,
+                    result.unmatched,
+                    result.metadataFailures == 0
+                        ? string.Empty
+                        : " " + result.metadataFailures + " imported file metadata update" +
+                          (result.metadataFailures == 1 ? " failed." : "s failed."));
+                googleDriveMessageType = result.unmatched > 0 || result.metadataFailures > 0
+                    ? MessageType.Warning
+                    : MessageType.Info;
             }
             catch (Exception exception)
             {

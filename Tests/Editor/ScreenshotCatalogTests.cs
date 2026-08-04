@@ -532,6 +532,72 @@ namespace SkatanicStudios
             Object.DestroyImmediate(template);
         }
 
+        [Test]
+        public void GoogleDriveFilenameMatchesRequirementAndSlot()
+        {
+            ScreenshotCatalogCategory category = new ScreenshotCatalogCategory { name = "Meta Distribution" };
+            ScreenshotCatalogRequirement requirement = new ScreenshotCatalogRequirement { name = "Hero Cover" };
+            ScreenshotCatalogSlot first = new ScreenshotCatalogSlot { name = "First" };
+            ScreenshotCatalogSlot second = new ScreenshotCatalogSlot { name = "Second" };
+            requirement.slots.Add(first);
+            requirement.slots.Add(second);
+            category.requirements.Add(requirement);
+
+            bool matched = ScreenshotGoogleDriveService.TryMatchRemoteFilename(
+                category, "Hero-Cover-02-v014.png", out ScreenshotCatalogRequirement matchedRequirement,
+                out ScreenshotCatalogSlot matchedSlot);
+
+            Assert.That(matched, Is.True);
+            Assert.That(matchedRequirement, Is.SameAs(requirement));
+            Assert.That(matchedSlot, Is.SameAs(second));
+        }
+
+        [Test]
+        public void GoogleDriveFilenameRejectsUnknownAndMalformedVersions()
+        {
+            ScreenshotCatalogCategory category = new ScreenshotCatalogCategory { name = "Category" };
+            ScreenshotCatalogRequirement requirement = new ScreenshotCatalogRequirement { name = "Hero Cover" };
+            requirement.slots.Add(new ScreenshotCatalogSlot { name = "Image" });
+            category.requirements.Add(requirement);
+
+            Assert.That(ScreenshotGoogleDriveService.TryMatchRemoteFilename(
+                category, "Unknown-01-v001.png", out _, out _), Is.False);
+            Assert.That(ScreenshotGoogleDriveService.TryMatchRemoteFilename(
+                category, "Hero-Cover-01-vLatest.png", out _, out _), Is.False);
+            Assert.That(ScreenshotGoogleDriveService.TryMatchRemoteFilename(
+                category, "Hero-Cover-01-v001.jpg", out _, out _), Is.False);
+        }
+
+        [Test]
+        public void GoogleDriveDownloadsUseSeparateSourceAndFinalFoldersWithoutOverwriting()
+        {
+            ScreenshotCatalog catalog = ScriptableObject.CreateInstance<ScreenshotCatalog>();
+            catalog.name = "Catalog";
+            catalog.outputRoot = TestFolder;
+            ScreenshotCatalogCategory category = new ScreenshotCatalogCategory { name = "Meta Distribution" };
+
+            string sourcePath = ScreenshotGoogleDriveService.GetDownloadAssetPath(
+                catalog, category, false, "Hero-Cover-01-v001.png");
+            string finalPath = ScreenshotGoogleDriveService.GetDownloadAssetPath(
+                catalog, category, true, "Hero-Cover-01-v001.png");
+
+            Assert.That(sourcePath, Is.EqualTo(TestFolder + "/Catalog/Meta-Distribution/Source/Hero-Cover-01-v001.png"));
+            Assert.That(finalPath, Is.EqualTo(TestFolder + "/Catalog/Meta-Distribution/Final/Hero-Cover-01-v001.png"));
+            Assert.That(sourcePath, Is.Not.EqualTo(finalPath));
+
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(
+                Directory.GetParent(Application.dataPath).FullName,
+                sourcePath.Replace('/', Path.DirectorySeparatorChar))));
+            File.WriteAllBytes(Path.Combine(
+                Directory.GetParent(Application.dataPath).FullName,
+                sourcePath.Replace('/', Path.DirectorySeparatorChar)), new byte[] { 1 });
+            string duplicatePath = ScreenshotGoogleDriveService.GetDownloadAssetPath(
+                catalog, category, false, "Hero-Cover-01-v001.png");
+            Assert.That(duplicatePath, Is.EqualTo(
+                TestFolder + "/Catalog/Meta-Distribution/Source/Hero-Cover-01-v001-drive-001.png"));
+            Object.DestroyImmediate(catalog);
+        }
+
         private static ScreenshotCatalogSlot CreatePersistentSlot(
             out ScreenshotCatalog catalog,
             out ScreenshotTemplate template)

@@ -35,7 +35,7 @@ Selecting a catalog in the Project window shows a compact completion summary and
 
 ## Google Drive sync
 
-Google Drive sync is editor-only and uses an explicit, immutable **Push New** workflow. It uploads tracked source and final versions that have not been uploaded through the selected profile. Existing remote files are never overwritten or deleted.
+Google Drive sync is editor-only and uses explicit **Push New** and **Pull New** operations. It uploads tracked source and final versions that have not been uploaded through the selected profile. Existing remote files are never overwritten or deleted. Pull imports new remote PNGs without overwriting local assets.
 
 1. In Google Cloud Console, create or select a project and enable the **Google Drive API**.
 2. Configure the OAuth consent screen. While the app is in Testing mode, add each Google account that will connect from Unity as a test user.
@@ -44,7 +44,9 @@ Google Drive sync is editor-only and uses an explicit, immutable **Push New** wo
 5. Select the profile and use **Load OAuth Credentials JSON...**. Set **Destination Folder** to `root`, a Drive folder ID, or a full Drive folder URL.
 6. Open **Window > Screenshotter > Requirement Catalog**, expand **Google Drive Sync**, and assign the profile.
 7. Select **Connect**, approve access in the browser, and return to Unity. The refresh token is stored locally under `Library/Screenshotter/GoogleDrive` and is not included in the profile asset.
-8. Select **Push New**. Screenshotter creates catalog/category folders below the destination and uploads each pending PNG once.
+8. Select **Push New**. Screenshotter creates `Catalog/Category/Source` and `Catalog/Category/Final` folders below the destination and uploads each pending PNG once.
+
+To bring an image created outside Unity back into the catalog, place it in the matching category's **Source** or **Final** folder and retain the standard `{Requirement}-{Slot:00}-v{Version:000}.png` name, for example `Hero-Cover-01-v003.png`. Select **Pull New**. The file is imported below the catalog's local category folder, attached to the matching slot, and assigned hidden Drive metadata for later syncs. Files that cannot be matched uniquely are reported and left untouched in Drive.
 
 The profile requests Google Drive access because a folder supplied by ID may predate the app. For a public OAuth application, review Google's OAuth verification requirements before distributing the configured client beyond your organization or test-user list. **Disconnect** removes the local token only. **Untrack** removes a local catalog version only; neither action deletes uploaded Drive files.
 

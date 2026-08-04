@@ -21,6 +21,14 @@ namespace SkatanicStudios
         internal int skipped;
     }
 
+    internal sealed class ScreenshotGoogleDrivePullResult
+    {
+        internal int downloaded;
+        internal int alreadySynced;
+        internal int unmatched;
+        internal int metadataFailures;
+    }
+
     internal static class ScreenshotGoogleDriveService
     {
         private const string DriveScope = "https://www.googleapis.com/auth/drive";
@@ -55,12 +63,26 @@ namespace SkatanicStudios
             public string name;
             public string webViewLink;
             public string md5Checksum;
+            public string mimeType;
+            public DriveAppProperties appProperties;
+        }
+
+        [Serializable]
+        private sealed class DriveAppProperties
+        {
+            public string screenshotterCatalog;
+            public string screenshotterCategory;
+            public string screenshotterRequirement;
+            public string screenshotterSlot;
+            public string screenshotterKind;
+            public string screenshotterAssetGuid;
         }
 
         [Serializable]
         private sealed class DriveFileList
         {
             public DriveFile[] files;
+            public string nextPageToken;
         }
 
         private sealed class UploadJob
@@ -250,6 +272,7 @@ namespace SkatanicStudios
                 "catalog:" + catalogGuid);
 
             Dictionary<string, string> categoryFolders = new Dictionary<string, string>();
+            Dictionary<string, string> assetFolders = new Dictionary<string, string>();
             for (int index = 0; index < jobs.Count; index++)
             {
                 UploadJob job = jobs[index];
@@ -264,8 +287,21 @@ namespace SkatanicStudios
                     categoryFolders[job.categoryId] = categoryFolderId;
                 }
 
+                string kind = job.finalAsset ? "final" : "source";
+                string assetFolderKey = job.categoryId + ":" + kind;
+                string assetFolderId;
+                if (!assetFolders.TryGetValue(assetFolderKey, out assetFolderId))
+                {
+                    assetFolderId = await EnsureFolderAsync(
+                        accessToken,
+                        categoryFolderId,
+                        job.finalAsset ? "Final" : "Source",
+                        "kind:" + catalogGuid + ":" + job.categoryId + ":" + kind);
+                    assetFolders[assetFolderKey] = assetFolderId;
+                }
+
                 reportProgress?.Invoke(string.Format("Uploading {0} ({1}/{2})...", job.fileName, index + 1, jobs.Count));
-                DriveFile uploaded = await UploadFileAsync(accessToken, categoryFolderId, catalogGuid, job);
+                DriveFile uploaded = await UploadFileAsync(accessToken, assetFolderId, catalogGuid, job);
                 catalog.googleDriveBindings.Add(new ScreenshotGoogleDriveBinding
                 {
                     profileGuid = profileGuid,
@@ -281,6 +317,220 @@ namespace SkatanicStudios
 
             reportProgress?.Invoke("Google Drive sync complete.");
             return result;
+        }
+
+        internal static async Task<ScreenshotGoogleDrivePullResult> PullNewAsync(
+            ScreenshotCatalog catalog,
+            Action<string> reportProgress)
+        {
+            if (catalog == null || catalog.googleDriveProfile == null)
+            {
+                throw new InvalidOperationException("Assign a Google Drive sync profile to the catalog first.");
+            }
+            if (!IsConfigured(catalog.googleDriveProfile))
+            {
+                throw new InvalidOperationException("The Google Drive sync profile has no OAuth client ID.");
+            }
+
+            string accessToken = await GetAccessTokenAsync(catalog.googleDriveProfile);
+            string catalogGuid = GetCatalogGuid(catalog);
+            string profileGuid = GetProfileGuid(catalog.googleDriveProfile);
+            string rootFolderId = GetDestinationFolderId(catalog.googleDriveProfile);
+            ScreenshotGoogleDrivePullResult result = new ScreenshotGoogleDrivePullResult();
+            reportProgress?.Invoke("Preparing Drive folders for " + catalog.name + "...");
+            string catalogFolderId = await EnsureFolderAsync(
+                accessToken,
+                rootFolderId,
+                ScreenshotCatalogUtility.SanitizeName(catalog.name),
+                "catalog:" + catalogGuid);
+
+            foreach (ScreenshotCatalogCategory category in catalog.categories)
+            {
+                string categoryFolderId = await EnsureFolderAsync(
+                    accessToken,
+                    catalogFolderId,
+                    ScreenshotCatalogUtility.SanitizeName(category.name),
+                    "category:" + catalogGuid + ":" + category.definitionId);
+
+                await PullFolderAsync(catalog, category, false, accessToken, profileGuid, catalogGuid,
+                    categoryFolderId, result, reportProgress);
+                await PullFolderAsync(catalog, category, true, accessToken, profileGuid, catalogGuid,
+                    categoryFolderId, result, reportProgress);
+            }
+
+            EditorUtility.SetDirty(catalog);
+            AssetDatabase.SaveAssets();
+            reportProgress?.Invoke("Google Drive pull complete.");
+            return result;
+        }
+
+        private static async Task PullFolderAsync(
+            ScreenshotCatalog catalog,
+            ScreenshotCatalogCategory category,
+            bool finalAsset,
+            string accessToken,
+            string profileGuid,
+            string catalogGuid,
+            string categoryFolderId,
+            ScreenshotGoogleDrivePullResult result,
+            Action<string> reportProgress)
+        {
+            string kind = finalAsset ? "final" : "source";
+            string folderId = await EnsureFolderAsync(
+                accessToken,
+                categoryFolderId,
+                finalAsset ? "Final" : "Source",
+                "kind:" + catalogGuid + ":" + category.definitionId + ":" + kind);
+            List<DriveFile> files = await ListPngFilesAsync(accessToken, folderId);
+            foreach (DriveFile file in files.OrderBy(item => item.name, StringComparer.OrdinalIgnoreCase))
+            {
+                if (catalog.googleDriveBindings.Any(binding =>
+                        binding.profileGuid == profileGuid && binding.driveFileId == file.id))
+                {
+                    result.alreadySynced++;
+                    continue;
+                }
+
+                ScreenshotCatalogRequirement requirement;
+                ScreenshotCatalogSlot slot;
+                if (!TryMatchRemoteFile(category, file, finalAsset, catalogGuid, out requirement, out slot))
+                {
+                    result.unmatched++;
+                    continue;
+                }
+
+                reportProgress?.Invoke("Downloading " + file.name + "...");
+                byte[] bytes = await DownloadFileAsync(accessToken, file.id);
+                string assetPath = GetDownloadAssetPath(catalog, category, finalAsset, file.name);
+                string absolutePath = ToAbsoluteAssetPath(assetPath);
+                Directory.CreateDirectory(Path.GetDirectoryName(absolutePath));
+                File.WriteAllBytes(absolutePath, bytes);
+                AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceSynchronousImport);
+                Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
+                if (texture == null)
+                {
+                    AssetDatabase.DeleteAsset(assetPath);
+                    result.unmatched++;
+                    continue;
+                }
+
+                if (finalAsset)
+                {
+                    ScreenshotCatalogUtility.AddFinalVersion(slot, texture, true);
+                }
+                else
+                {
+                    ScreenshotCatalogUtility.AddSourceVersion(slot, texture, true);
+                }
+
+                string assetGuid = AssetDatabase.AssetPathToGUID(assetPath);
+                catalog.googleDriveBindings.Add(new ScreenshotGoogleDriveBinding
+                {
+                    profileGuid = profileGuid,
+                    slotDefinitionId = slot.definitionId,
+                    finalAsset = finalAsset,
+                    localAssetGuid = assetGuid,
+                    driveFileId = file.id
+                });
+                result.downloaded++;
+
+                try
+                {
+                    await ApplyFileMetadataAsync(accessToken, file.id, catalogGuid, category.definitionId,
+                        requirement.definitionId, slot.definitionId, finalAsset, assetGuid);
+                }
+                catch (Exception exception)
+                {
+                    result.metadataFailures++;
+                    Debug.LogWarning("Screenshotter imported '" + file.name +
+                                     "' but could not add its Google Drive metadata: " + exception.GetBaseException().Message);
+                }
+            }
+        }
+
+        private static bool TryMatchRemoteFile(
+            ScreenshotCatalogCategory category,
+            DriveFile file,
+            bool finalAsset,
+            string catalogGuid,
+            out ScreenshotCatalogRequirement requirement,
+            out ScreenshotCatalogSlot slot)
+        {
+            requirement = null;
+            slot = null;
+            DriveAppProperties properties = file.appProperties;
+            if (properties != null &&
+                (string.IsNullOrEmpty(properties.screenshotterCatalog) || properties.screenshotterCatalog == catalogGuid) &&
+                properties.screenshotterCategory == category.definitionId &&
+                properties.screenshotterKind == (finalAsset ? "final" : "source"))
+            {
+                requirement = category.requirements.FirstOrDefault(item => item.definitionId == properties.screenshotterRequirement);
+                slot = requirement == null
+                    ? null
+                    : requirement.slots.FirstOrDefault(item => item.definitionId == properties.screenshotterSlot);
+                if (slot != null)
+                {
+                    return true;
+                }
+            }
+
+            return TryMatchRemoteFilename(category, file.name, out requirement, out slot);
+        }
+
+        internal static bool TryMatchRemoteFilename(
+            ScreenshotCatalogCategory category,
+            string fileName,
+            out ScreenshotCatalogRequirement requirement,
+            out ScreenshotCatalogSlot slot)
+        {
+            requirement = null;
+            slot = null;
+            if (category == null || string.IsNullOrWhiteSpace(fileName) ||
+                !string.Equals(Path.GetExtension(fileName), ".png", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            string nameWithoutExtension = Path.GetFileNameWithoutExtension(fileName);
+            var matches = category.requirements
+                .SelectMany(candidateRequirement => candidateRequirement.slots.Select((candidateSlot, slotIndex) => new
+                {
+                    requirement = candidateRequirement,
+                    slot = candidateSlot,
+                    prefix = ScreenshotCatalogUtility.SanitizeName(candidateRequirement.name) +
+                             "-" + (slotIndex + 1).ToString("00") + "-v"
+                }))
+                .Where(candidate =>
+                    nameWithoutExtension.StartsWith(candidate.prefix, StringComparison.OrdinalIgnoreCase) &&
+                    nameWithoutExtension.Length > candidate.prefix.Length &&
+                    nameWithoutExtension.Substring(candidate.prefix.Length).All(char.IsDigit))
+                .ToArray();
+            if (matches.Length != 1)
+            {
+                return false;
+            }
+
+            requirement = matches[0].requirement;
+            slot = matches[0].slot;
+            return true;
+        }
+
+        internal static string GetDownloadAssetPath(
+            ScreenshotCatalog catalog,
+            ScreenshotCatalogCategory category,
+            bool finalAsset,
+            string remoteFileName)
+        {
+            string folder = ScreenshotCatalogUtility.GetCatalogFolder(catalog, category) +
+                            "/" + (finalAsset ? "Final" : "Source");
+            string baseName = ScreenshotCatalogUtility.SanitizeName(Path.GetFileNameWithoutExtension(remoteFileName));
+            string candidate = folder + "/" + baseName + ".png";
+            int duplicate = 1;
+            while (File.Exists(ToAbsoluteAssetPath(candidate)) || AssetDatabase.LoadMainAssetAtPath(candidate) != null)
+            {
+                candidate = string.Format("{0}/{1}-drive-{2:000}.png", folder, baseName, duplicate++);
+            }
+            return candidate.Replace('\\', '/');
         }
 
         private static List<UploadJob> BuildUploadJobs(ScreenshotCatalog catalog)
@@ -459,6 +709,88 @@ namespace SkatanicStudios
                         throw new InvalidOperationException("Google Drive created a folder but returned no file ID.");
                     }
                     return folder.id;
+                }
+            }
+        }
+
+        private static async Task<List<DriveFile>> ListPngFilesAsync(string accessToken, string parentId)
+        {
+            List<DriveFile> files = new List<DriveFile>();
+            string pageToken = null;
+            do
+            {
+                string query = "'" + EscapeDriveQuery(parentId) + "' in parents and trashed = false";
+                string url = DriveFilesEndpoint + "?q=" + Encode(query) +
+                             "&spaces=drive&pageSize=1000" +
+                             "&fields=nextPageToken,files(id,name,mimeType,md5Checksum,appProperties)" +
+                             "&supportsAllDrives=true&includeItemsFromAllDrives=true";
+                if (!string.IsNullOrEmpty(pageToken))
+                {
+                    url += "&pageToken=" + Encode(pageToken);
+                }
+
+                using (HttpRequestMessage request = AuthorizedRequest(HttpMethod.Get, url, accessToken))
+                using (HttpResponseMessage response = await HttpClient.SendAsync(request))
+                {
+                    string json = await response.Content.ReadAsStringAsync();
+                    ThrowDriveError(response, json);
+                    DriveFileList page = JsonUtility.FromJson<DriveFileList>(json);
+                    if (page != null && page.files != null)
+                    {
+                        files.AddRange(page.files.Where(file =>
+                            file != null &&
+                            string.Equals(Path.GetExtension(file.name), ".png", StringComparison.OrdinalIgnoreCase)));
+                    }
+                    pageToken = page == null ? null : page.nextPageToken;
+                }
+            }
+            while (!string.IsNullOrEmpty(pageToken));
+            return files;
+        }
+
+        private static async Task<byte[]> DownloadFileAsync(string accessToken, string fileId)
+        {
+            string url = DriveFilesEndpoint + "/" + Encode(fileId) + "?alt=media&supportsAllDrives=true";
+            using (HttpRequestMessage request = AuthorizedRequest(HttpMethod.Get, url, accessToken))
+            using (HttpResponseMessage response = await HttpClient.SendAsync(request))
+            {
+                byte[] bytes = await response.Content.ReadAsByteArrayAsync();
+                if (!response.IsSuccessStatusCode)
+                {
+                    throw new InvalidOperationException(
+                        "Google Drive download failed (" + (int)response.StatusCode + "): " +
+                        Encoding.UTF8.GetString(bytes));
+                }
+                return bytes;
+            }
+        }
+
+        private static async Task ApplyFileMetadataAsync(
+            string accessToken,
+            string fileId,
+            string catalogGuid,
+            string categoryId,
+            string requirementId,
+            string slotId,
+            bool finalAsset,
+            string assetGuid)
+        {
+            string metadata = "{\"appProperties\":{" +
+                              "\"screenshotterCatalog\":\"" + EscapeJson(catalogGuid) + "\"," +
+                              "\"screenshotterCategory\":\"" + EscapeJson(categoryId) + "\"," +
+                              "\"screenshotterRequirement\":\"" + EscapeJson(requirementId) + "\"," +
+                              "\"screenshotterSlot\":\"" + EscapeJson(slotId) + "\"," +
+                              "\"screenshotterKind\":\"" + (finalAsset ? "final" : "source") + "\"," +
+                              "\"screenshotterAssetGuid\":\"" + EscapeJson(assetGuid) + "\"}}";
+            string url = DriveFilesEndpoint + "/" + Encode(fileId) +
+                         "?fields=id,appProperties&supportsAllDrives=true";
+            using (HttpRequestMessage request = AuthorizedRequest(new HttpMethod("PATCH"), url, accessToken))
+            {
+                request.Content = new StringContent(metadata, Encoding.UTF8, "application/json");
+                using (HttpResponseMessage response = await HttpClient.SendAsync(request))
+                {
+                    string json = await response.Content.ReadAsStringAsync();
+                    ThrowDriveError(response, json);
                 }
             }
         }
