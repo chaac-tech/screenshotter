@@ -241,6 +241,93 @@ namespace SkatanicStudios
         }
 
         [Test]
+        public void ManuallyAssignedVersionStartsUntracked()
+        {
+            string imagePath = TestFolder + "/manual-untracked.png";
+            CreatePngAsset(imagePath, 16, 16);
+            Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(imagePath);
+            ScreenshotCatalogSlot slot = CreatePersistentSlot(out ScreenshotCatalog catalog, out ScreenshotTemplate template);
+
+            ScreenshotCatalogUtility.AddSourceVersion(slot, texture);
+
+            Assert.That(slot.activeSource, Is.SameAs(texture));
+            Assert.That(ScreenshotCatalogUtility.IsVersionTracked(slot, false, texture), Is.False);
+            Assert.That(ScreenshotGoogleDriveService.CountPending(catalog), Is.EqualTo(0));
+            Object.DestroyImmediate(catalog);
+            Object.DestroyImmediate(template);
+        }
+
+        [Test]
+        public void CapturedVersionCanBeAddedAsTracked()
+        {
+            string imagePath = TestFolder + "/captured-tracked.png";
+            CreatePngAsset(imagePath, 16, 16);
+            Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(imagePath);
+            ScreenshotCatalogSlot slot = CreatePersistentSlot(out ScreenshotCatalog catalog, out ScreenshotTemplate template);
+
+            ScreenshotCatalogUtility.AddSourceVersion(slot, texture, true);
+
+            Assert.That(ScreenshotCatalogUtility.IsVersionTracked(slot, false, texture), Is.True);
+            Assert.That(ScreenshotGoogleDriveService.CountPending(catalog), Is.EqualTo(1));
+            Object.DestroyImmediate(catalog);
+            Object.DestroyImmediate(template);
+        }
+
+        [Test]
+        public void UntrackingRetainsVersionActiveAssetAndDriveBinding()
+        {
+            string imagePath = TestFolder + "/retained-untracked.png";
+            CreatePngAsset(imagePath, 16, 16);
+            Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(imagePath);
+            ScreenshotCatalogSlot slot = CreatePersistentSlot(out ScreenshotCatalog catalog, out ScreenshotTemplate template);
+            ScreenshotCatalogUtility.AddSourceVersion(slot, texture, true);
+            catalog.googleDriveBindings.Add(new ScreenshotGoogleDriveBinding
+            {
+                profileGuid = string.Empty,
+                slotDefinitionId = slot.definitionId,
+                localAssetGuid = AssetDatabase.AssetPathToGUID(imagePath),
+                driveFileId = "existing-remote"
+            });
+
+            ScreenshotCatalogUtility.SetVersionTracked(slot, false, texture, false);
+
+            Assert.That(slot.sourceVersions, Does.Contain(texture));
+            Assert.That(slot.activeSource, Is.SameAs(texture));
+            Assert.That(catalog.googleDriveBindings, Has.Count.EqualTo(1));
+            Assert.That(ScreenshotGoogleDriveService.CountPending(catalog), Is.EqualTo(0));
+
+            ScreenshotCatalogUtility.SetVersionTracked(slot, false, texture, true);
+            Assert.That(ScreenshotGoogleDriveService.CountPending(catalog), Is.EqualTo(0));
+            Object.DestroyImmediate(catalog);
+            Object.DestroyImmediate(template);
+        }
+
+        [Test]
+        public void RemovingVersionRetainsDriveBinding()
+        {
+            string imagePath = TestFolder + "/removed-version.png";
+            CreatePngAsset(imagePath, 16, 16);
+            Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(imagePath);
+            ScreenshotCatalogSlot slot = CreatePersistentSlot(out ScreenshotCatalog catalog, out ScreenshotTemplate template);
+            ScreenshotCatalogUtility.AddSourceVersion(slot, texture, true);
+            catalog.googleDriveBindings.Add(new ScreenshotGoogleDriveBinding
+            {
+                profileGuid = string.Empty,
+                slotDefinitionId = slot.definitionId,
+                localAssetGuid = AssetDatabase.AssetPathToGUID(imagePath),
+                driveFileId = "existing-remote"
+            });
+
+            ScreenshotCatalogUtility.RemoveSourceVersion(slot, 0);
+
+            Assert.That(slot.sourceVersions, Is.Empty);
+            Assert.That(slot.activeSource, Is.Null);
+            Assert.That(catalog.googleDriveBindings, Has.Count.EqualTo(1));
+            Object.DestroyImmediate(catalog);
+            Object.DestroyImmediate(template);
+        }
+
+        [Test]
         public void ValidCapturedPngCompletesCaptureSlot()
         {
             string assetPath = TestFolder + "/valid.png";
@@ -425,7 +512,7 @@ namespace SkatanicStudios
             ScreenshotCatalog catalog = ScriptableObject.CreateInstance<ScreenshotCatalog>();
             ScreenshotCatalogUtility.InitializeCatalog(catalog, template);
             ScreenshotCatalogSlot slot = catalog.categories.Single().requirements.Single().slots.Single();
-            ScreenshotCatalogUtility.AddSourceVersion(slot, texture);
+            ScreenshotCatalogUtility.AddSourceVersion(slot, texture, true);
             catalog.googleDriveProfile = firstProfile;
             catalog.googleDriveBindings.Add(new ScreenshotGoogleDriveBinding
             {
@@ -443,6 +530,21 @@ namespace SkatanicStudios
             Assert.That(ScreenshotGoogleDriveService.IsVersionSynced(catalog, slot, false, texture), Is.False);
             Object.DestroyImmediate(catalog);
             Object.DestroyImmediate(template);
+        }
+
+        private static ScreenshotCatalogSlot CreatePersistentSlot(
+            out ScreenshotCatalog catalog,
+            out ScreenshotTemplate template)
+        {
+            template = ScriptableObject.CreateInstance<ScreenshotTemplate>();
+            ScreenshotCategoryDefinition categoryDefinition = new ScreenshotCategoryDefinition { id = "category", name = "Category" };
+            ScreenshotRequirementDefinition requirementDefinition = new ScreenshotRequirementDefinition { id = "requirement", name = "Requirement" };
+            requirementDefinition.slots.Add(new ScreenshotSlotDefinition { id = "slot", name = "Slot" });
+            categoryDefinition.requirements.Add(requirementDefinition);
+            template.categories.Add(categoryDefinition);
+            catalog = ScriptableObject.CreateInstance<ScreenshotCatalog>();
+            ScreenshotCatalogUtility.InitializeCatalog(catalog, template);
+            return catalog.categories.Single().requirements.Single().slots.Single();
         }
 
         private static void CreatePngAsset(string assetPath, int width, int height)

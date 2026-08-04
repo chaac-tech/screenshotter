@@ -82,13 +82,13 @@ namespace SkatanicStudios
 
             EditorGUILayout.LabelField("Summary", EditorStyles.boldLabel);
             EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
-            DrawCount("Complete", complete, new Color(0.35f, 0.8f, 0.4f));
-            DrawCount("Source Ready", sourceReady, new Color(0.95f, 0.75f, 0.25f));
-            DrawCount("Missing", missing, Color.white);
-            DrawCount("Invalid", invalid, new Color(1f, 0.35f, 0.35f));
+            ScreenshotCatalogGUI.DrawCountBadge("Complete", complete, ScreenshotCatalogStatus.Complete);
+            ScreenshotCatalogGUI.DrawCountBadge("Source Ready", sourceReady, ScreenshotCatalogStatus.SourceReady);
+            ScreenshotCatalogGUI.DrawCountBadge("Missing", missing, ScreenshotCatalogStatus.Missing);
+            ScreenshotCatalogGUI.DrawCountBadge("Invalid", invalid, ScreenshotCatalogStatus.Invalid);
             if (obsolete > 0)
             {
-                DrawCount("Obsolete", obsolete, Color.gray);
+                ScreenshotCatalogGUI.DrawCountBadge("Obsolete", obsolete, ScreenshotCatalogStatus.Obsolete);
             }
             EditorGUILayout.EndHorizontal();
         }
@@ -130,7 +130,7 @@ namespace SkatanicStudios
                 requirement.name + (requirement.obsolete ? " (Obsolete)" : string.Empty),
                 EditorStyles.miniBoldLabel);
             EditorGUILayout.LabelField(
-                string.Format("{0} · {1}x{2} · {3}", requirement.workflow, requirement.width, requirement.height, requirement.imageFormat),
+                ScreenshotCatalogGUI.GetSpecification(requirement),
                 EditorStyles.miniLabel);
 
             foreach (ScreenshotCatalogSlot slot in requirement.slots)
@@ -138,10 +138,7 @@ namespace SkatanicStudios
                 ScreenshotCatalogStatus status = ScreenshotCatalogUtility.GetStatus(requirement, slot);
                 EditorGUILayout.BeginHorizontal();
                 EditorGUILayout.LabelField(slot.name + (slot.required ? " *" : string.Empty), GUILayout.MinWidth(120));
-                Color previousColor = GUI.color;
-                GUI.color = GetStatusColor(status);
-                GUILayout.Label(ScreenshotCatalogUtility.GetStatusLabel(status), EditorStyles.miniBoldLabel, GUILayout.Width(85));
-                GUI.color = previousColor;
+                ScreenshotCatalogGUI.DrawStatusBadge(status);
                 Texture2D reviewTexture = ScreenshotCatalogUtility.GetReviewTexture(requirement, slot);
                 EditorGUI.BeginDisabledGroup(true);
                 EditorGUILayout.ObjectField(reviewTexture, typeof(Texture2D), false, GUILayout.MinWidth(100));
@@ -151,29 +148,5 @@ namespace SkatanicStudios
             EditorGUILayout.EndVertical();
         }
 
-        private static void DrawCount(string label, int count, Color color)
-        {
-            Color previousColor = GUI.color;
-            GUI.color = color;
-            GUILayout.Label(label + ": " + count, EditorStyles.miniBoldLabel);
-            GUI.color = previousColor;
-        }
-
-        private static Color GetStatusColor(ScreenshotCatalogStatus status)
-        {
-            switch (status)
-            {
-                case ScreenshotCatalogStatus.Complete:
-                    return new Color(0.35f, 0.8f, 0.4f);
-                case ScreenshotCatalogStatus.SourceReady:
-                    return new Color(0.95f, 0.75f, 0.25f);
-                case ScreenshotCatalogStatus.Invalid:
-                    return new Color(1f, 0.35f, 0.35f);
-                case ScreenshotCatalogStatus.Obsolete:
-                    return Color.gray;
-                default:
-                    return Color.white;
-            }
-        }
     }
 }

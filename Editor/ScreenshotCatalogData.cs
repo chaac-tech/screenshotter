@@ -76,8 +76,10 @@ namespace SkatanicStudios
         [SerializeField] internal string fallbackName;
         [SerializeField] internal bool fallbackRequired;
         [SerializeField] internal List<Texture2D> sourceVersions = new List<Texture2D>();
+        [SerializeField] internal List<string> trackedSourceAssetGuids = new List<string>();
         [SerializeField] internal int activeSourceIndex = -1;
         [SerializeField] internal List<Texture2D> finalVersions = new List<Texture2D>();
+        [SerializeField] internal List<string> trackedFinalAssetGuids = new List<string>();
         [SerializeField] internal int activeFinalIndex = -1;
     }
 
@@ -252,8 +254,6 @@ namespace SkatanicStudios
                 removed += requirement.slots.RemoveAll(slot => !HasAssignedImages(slot));
             }
             removed += catalog.requirementStates.RemoveAll(requirement => requirement.slots.Count == 0);
-            removed += PruneUnusedDriveBindings(catalog);
-
             if (removed > 0)
             {
                 EditorUtility.SetDirty(catalog);
@@ -541,17 +541,67 @@ namespace SkatanicStudios
             return slot.sourceVersions.Count + 1;
         }
 
-        internal static void AddSourceVersion(ScreenshotCatalogSlot slot, Texture2D texture)
+        internal static void AddSourceVersion(ScreenshotCatalogSlot slot, Texture2D texture, bool trackNewVersion = false)
         {
             EnsureState(slot);
+            bool isNew = texture != null && !slot.sourceVersions.Contains(texture);
             slot.activeSource = texture;
+            if (isNew && trackNewVersion)
+            {
+                SetVersionTracked(slot, false, texture, true);
+            }
             MarkCatalogDirty(slot);
         }
 
-        internal static void AddFinalVersion(ScreenshotCatalogSlot slot, Texture2D texture)
+        internal static void AddFinalVersion(ScreenshotCatalogSlot slot, Texture2D texture, bool trackNewVersion = false)
         {
             EnsureState(slot);
+            bool isNew = texture != null && !slot.finalVersions.Contains(texture);
             slot.activeFinal = texture;
+            if (isNew && trackNewVersion)
+            {
+                SetVersionTracked(slot, true, texture, true);
+            }
+            MarkCatalogDirty(slot);
+        }
+
+        internal static bool IsVersionTracked(ScreenshotCatalogSlot slot, bool finalAsset, Texture2D texture)
+        {
+            string guid = GetAssetGuid(texture);
+            if (slot == null || slot.state == null || string.IsNullOrEmpty(guid))
+            {
+                return false;
+            }
+
+            return GetTrackedAssetGuids(slot.state, finalAsset).Contains(guid);
+        }
+
+        internal static void SetVersionTracked(ScreenshotCatalogSlot slot, bool finalAsset, Texture2D texture, bool tracked)
+        {
+            if (slot == null || texture == null)
+            {
+                return;
+            }
+
+            EnsureState(slot);
+            string guid = GetAssetGuid(texture);
+            if (slot.state == null || string.IsNullOrEmpty(guid))
+            {
+                return;
+            }
+
+            List<string> trackedGuids = GetTrackedAssetGuids(slot.state, finalAsset);
+            if (tracked)
+            {
+                if (!trackedGuids.Contains(guid))
+                {
+                    trackedGuids.Add(guid);
+                }
+            }
+            else
+            {
+                trackedGuids.RemoveAll(item => item == guid);
+            }
             MarkCatalogDirty(slot);
         }
 
@@ -590,10 +640,11 @@ namespace SkatanicStudios
 
             if (slot.catalog != null)
             {
-                RemoveDriveBindings(slot.catalog, slot, finalAsset, removed);
                 PruneEmptyObsolete(slot.catalog);
                 EditorUtility.SetDirty(slot.catalog);
             }
+
+            RemoveTrackedGuid(slot, finalAsset, removed);
         }
 
         private static bool HasAssignedImages(ScreenshotCatalogSlotState slot)
@@ -602,57 +653,29 @@ namespace SkatanicStudios
                    slot.finalVersions.Any(texture => texture != null);
         }
 
-        private static int PruneUnusedDriveBindings(ScreenshotCatalog catalog)
+        private static void RemoveTrackedGuid(ScreenshotCatalogSlot slot, bool finalAsset, Texture2D texture)
         {
-            HashSet<string> tracked = new HashSet<string>();
-            foreach (ScreenshotCatalogRequirementState requirement in catalog.requirementStates)
-            {
-                foreach (ScreenshotCatalogSlotState slot in requirement.slots)
-                {
-                    AddTrackedGuids(tracked, slot.definitionId, false, slot.sourceVersions);
-                    AddTrackedGuids(tracked, slot.definitionId, true, slot.finalVersions);
-                }
-            }
-
-            return catalog.googleDriveBindings.RemoveAll(binding =>
-                !tracked.Contains(GetDriveBindingKey(binding.slotDefinitionId, binding.finalAsset, binding.localAssetGuid)));
-        }
-
-        private static void AddTrackedGuids(HashSet<string> tracked, string slotId, bool finalAsset, IEnumerable<Texture2D> versions)
-        {
-            foreach (Texture2D texture in versions.Where(item => item != null))
-            {
-                string path = AssetDatabase.GetAssetPath(texture);
-                string guid = string.IsNullOrEmpty(path) ? null : AssetDatabase.AssetPathToGUID(path);
-                if (!string.IsNullOrEmpty(guid))
-                {
-                    tracked.Add(GetDriveBindingKey(slotId, finalAsset, guid));
-                }
-            }
-        }
-
-        private static void RemoveDriveBindings(
-            ScreenshotCatalog catalog,
-            ScreenshotCatalogSlot slot,
-            bool finalAsset,
-            Texture2D texture)
-        {
-            string path = texture == null ? null : AssetDatabase.GetAssetPath(texture);
-            string guid = string.IsNullOrEmpty(path) ? null : AssetDatabase.AssetPathToGUID(path);
-            if (string.IsNullOrEmpty(guid))
+            if (slot == null || slot.state == null)
             {
                 return;
             }
 
-            catalog.googleDriveBindings.RemoveAll(binding =>
-                binding.slotDefinitionId == slot.definitionId &&
-                binding.finalAsset == finalAsset &&
-                binding.localAssetGuid == guid);
+            string guid = GetAssetGuid(texture);
+            if (!string.IsNullOrEmpty(guid))
+            {
+                GetTrackedAssetGuids(slot.state, finalAsset).RemoveAll(item => item == guid);
+            }
         }
 
-        private static string GetDriveBindingKey(string slotId, bool finalAsset, string guid)
+        private static List<string> GetTrackedAssetGuids(ScreenshotCatalogSlotState state, bool finalAsset)
         {
-            return slotId + "\n" + (finalAsset ? "1" : "0") + "\n" + guid;
+            return finalAsset ? state.trackedFinalAssetGuids : state.trackedSourceAssetGuids;
+        }
+
+        private static string GetAssetGuid(Texture2D texture)
+        {
+            string path = texture == null ? null : AssetDatabase.GetAssetPath(texture);
+            return string.IsNullOrEmpty(path) ? null : AssetDatabase.AssetPathToGUID(path);
         }
 
         private static ScreenshotCatalogRequirement CreateRequirement(

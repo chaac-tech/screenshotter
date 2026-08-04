@@ -311,7 +311,7 @@ namespace SkatanicStudios
         {
             foreach (Texture2D texture in versions)
             {
-                if (texture == null)
+                if (texture == null || !ScreenshotCatalogUtility.IsVersionTracked(slot, finalAsset, texture))
                 {
                     continue;
                 }
@@ -347,7 +347,9 @@ namespace SkatanicStudios
             return catalog.categories
                 .SelectMany(category => category.requirements)
                 .SelectMany(requirement => requirement.slots)
-                .Sum(slot => slot.sourceVersions.Count(texture => texture != null) + slot.finalVersions.Count(texture => texture != null));
+                .Sum(slot =>
+                    slot.sourceVersions.Count(texture => ScreenshotCatalogUtility.IsVersionTracked(slot, false, texture)) +
+                    slot.finalVersions.Count(texture => ScreenshotCatalogUtility.IsVersionTracked(slot, true, texture)));
         }
 
         private static int CountSyncedVersions(ScreenshotCatalog catalog)
@@ -357,8 +359,12 @@ namespace SkatanicStudios
             {
                 foreach (ScreenshotCatalogSlot slot in requirement.slots)
                 {
-                    count += slot.sourceVersions.Count(texture => IsVersionSynced(catalog, slot, false, texture));
-                    count += slot.finalVersions.Count(texture => IsVersionSynced(catalog, slot, true, texture));
+                    count += slot.sourceVersions.Count(texture =>
+                        ScreenshotCatalogUtility.IsVersionTracked(slot, false, texture) &&
+                        IsVersionSynced(catalog, slot, false, texture));
+                    count += slot.finalVersions.Count(texture =>
+                        ScreenshotCatalogUtility.IsVersionTracked(slot, true, texture) &&
+                        IsVersionSynced(catalog, slot, true, texture));
                 }
             }
             return count;
