@@ -541,6 +541,28 @@ namespace SkatanicStudios
             return slot.sourceVersions.Count + 1;
         }
 
+        internal static string GetNextCaptureAssetPath(
+            ScreenshotCatalog catalog,
+            ScreenshotCatalogCategory category,
+            ScreenshotCatalogRequirement requirement,
+            ScreenshotCatalogSlot slot)
+        {
+            string assetFolder = GetCatalogFolder(catalog, category);
+            string projectRoot = Directory.GetParent(Application.dataPath).FullName;
+            int version = GetNextVersion(slot);
+            int slotIndex = requirement.slots.IndexOf(slot);
+            string assetPath;
+            string absolutePath;
+            do
+            {
+                string filename = GetVersionedFilename(requirement.name, slotIndex, version++);
+                assetPath = assetFolder + "/" + filename;
+                absolutePath = Path.Combine(projectRoot, assetPath.Replace('/', Path.DirectorySeparatorChar));
+            }
+            while (File.Exists(absolutePath));
+            return assetPath.Replace('\\', '/');
+        }
+
         internal static void AddSourceVersion(ScreenshotCatalogSlot slot, Texture2D texture, bool trackNewVersion = false)
         {
             EnsureState(slot);

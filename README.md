@@ -20,11 +20,11 @@ Open **Window > Screenshotter > Requirement Catalog** to manage promotional imag
 
 1. In the Project window, use **Assets > Create > Screenshotter > Meta Horizon Master Template** for the pre-populated Meta category, or **Requirement Template** for a blank master.
 2. Use **Assets > Create > Screenshotter > Catalog** once for each project, campaign, or release.
-3. Select the catalog in the Screenshot Catalog window, choose its master from the dropdown, choose the included categories, and synchronize it.
-4. Use **Browse...** to choose an output folder inside the project's `Assets` folder, then select the scene Camera that should take the image and arm a capture slot.
+3. Select the catalog in the Screenshot Catalog window, open **Settings**, choose its master and included categories, and synchronize it.
+4. Use the persistent top bar to choose an output folder inside the project's `Assets` folder and select the scene Camera. Select a slot in the left navigator, then arm it from the detail workspace.
 5. Choose whether to use Screenshotter's fly-camera controls. When enabled, Play Mode adds and configures the missing Screenshotter/PlayerInput components; when disabled, captures render directly from the selected gameplay Camera without adding components.
-6. Optionally enable **Match Game View To Armed Slot** so arming a slot selects or creates its exact fixed resolution in the Game View.
-7. Optionally assign an `InputActionReference` for capture, then use that action or the window button. With Screenshotter enabled and no custom action, its normal F12 binding remains available.
+6. In **Settings**, optionally enable **Match Game View** so arming a slot selects or creates its exact fixed resolution in the Game View.
+7. Optionally assign an `InputActionReference` in **Settings**, then use that action or the window button. With Screenshotter enabled and no custom action, its normal F12 binding remains available.
 
 Managed captures are saved below `Assets/Screenshots/{Catalog}/{Category}/` using names such as `Hero-Cover-01-v001.png`. Recapturing creates a new version and keeps earlier versions available. Capture-then-final requirements retain the raw source separately from the externally edited final PNG. If no catalog slot is armed, F12 continues to use the normal save dialog.
 
@@ -42,7 +42,7 @@ Google Drive sync is editor-only and uses explicit **Push New** and **Pull New**
 3. Create an OAuth client with application type **Desktop app**, then download its credentials JSON.
 4. In Unity, create **Assets > Create > Screenshotter > Google Drive Sync Profile**.
 5. Select the profile and use **Load OAuth Credentials JSON...**. Set **Destination Folder** to `root`, a Drive folder ID, or a full Drive folder URL.
-6. Open **Window > Screenshotter > Requirement Catalog**, expand **Google Drive Sync**, and assign the profile.
+6. Open **Window > Screenshotter > Requirement Catalog**, open **Settings**, expand **Google Drive Sync**, and assign the profile.
 7. Select **Connect**, approve access in the browser, and return to Unity. The refresh token is stored locally under `Library/Screenshotter/GoogleDrive` and is not included in the profile asset.
 8. Select **Push New**. Screenshotter creates `Catalog/Category/Source` and `Catalog/Category/Final` folders below the destination and uploads each pending PNG once.
 

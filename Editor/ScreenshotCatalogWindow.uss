@@ -1,0 +1,116 @@
+.screenshot-catalog-root {
+    flex-grow: 1;
+}
+
+.screenshot-catalog-top-bar {
+    padding: 6px 8px 5px 8px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(128, 128, 128, 0.35);
+}
+
+.screenshot-catalog-body {
+    flex-direction: row;
+}
+
+.screenshot-catalog-navigator {
+    min-width: 220px;
+    border-right-width: 1px;
+    border-right-color: rgba(128, 128, 128, 0.35);
+}
+
+.screenshot-catalog-navigator--narrow {
+    min-width: 0;
+    border-right-width: 0;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(128, 128, 128, 0.35);
+}
+
+.screenshot-catalog-workspace {
+    min-width: 0;
+}
+
+.screenshot-catalog-navigator-contents {
+    padding: 2px 5px 8px 5px;
+}
+
+.screenshot-catalog-navigator-toolbar {
+    padding: 3px 4px 1px 4px;
+}
+
+.screenshot-catalog-category-header {
+    flex-direction: row;
+    align-items: center;
+    margin-top: 7px;
+    margin-bottom: 3px;
+    padding-left: 4px;
+    padding-right: 4px;
+}
+
+.screenshot-catalog-category-name {
+    flex-grow: 1;
+    -unity-font-style: bold;
+    font-size: 11px;
+}
+
+.screenshot-catalog-category-count {
+    opacity: 0.65;
+    font-size: 10px;
+}
+
+.screenshot-catalog-slot-row {
+    min-height: 29px;
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 1px;
+    padding-left: 8px;
+    padding-right: 5px;
+    background-color: rgba(128, 128, 128, 0.07);
+}
+
+.screenshot-catalog-slot-row:hover {
+    background-color: rgba(90, 145, 205, 0.22);
+}
+
+.screenshot-catalog-slot-row--selected {
+    background-color: rgba(42, 104, 170, 0.82);
+}
+
+.screenshot-catalog-slot-name {
+    flex-grow: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    -unity-text-overflow-position: end;
+}
+
+.screenshot-catalog-slot-row--selected .screenshot-catalog-slot-name {
+    -unity-font-style: bold;
+    color: rgb(235, 245, 255);
+}
+
+.screenshot-catalog-slot-armed {
+    width: 17px;
+    opacity: 0.75;
+    -unity-text-align: middle-center;
+}
+
+.screenshot-catalog-slot-status {
+    width: 20px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+}
+
+.screenshot-catalog-empty-message {
+    margin: 9px;
+    white-space: normal;
+    opacity: 0.75;
+}
+
+.screenshot-catalog-workspace-contents {
+    padding: 10px 12px 14px 12px;
+}
+
+.screenshot-catalog-status-bar {
+    padding: 4px 8px;
+    border-top-width: 1px;
+    border-top-color: rgba(128, 128, 128, 0.35);
+}

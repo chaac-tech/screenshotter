@@ -4,6 +4,7 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.UIElements;
 
 namespace SkatanicStudios
 {
@@ -598,6 +599,167 @@ namespace SkatanicStudios
             Object.DestroyImmediate(catalog);
         }
 
+        [Test]
+        public void RequiredProgressExcludesOptionalAndObsoleteSlots()
+        {
+            string imagePath = TestFolder + "/progress-valid.png";
+            CreatePngAsset(imagePath, 16, 16);
+            Texture2D valid = AssetDatabase.LoadAssetAtPath<Texture2D>(imagePath);
+            ScreenshotTemplate template = ScriptableObject.CreateInstance<ScreenshotTemplate>();
+            ScreenshotCategoryDefinition category = new ScreenshotCategoryDefinition { id = "category", name = "Category" };
+            ScreenshotRequirementDefinition completeDefinition = CreateRequirementDefinition("complete", "Complete", true);
+            ScreenshotRequirementDefinition missingDefinition = CreateRequirementDefinition("missing", "Missing", true);
+            ScreenshotRequirementDefinition optionalDefinition = CreateRequirementDefinition("optional", "Optional", false);
+            ScreenshotRequirementDefinition obsoleteDefinition = CreateRequirementDefinition("obsolete", "Obsolete", true);
+            category.requirements.Add(completeDefinition);
+            category.requirements.Add(missingDefinition);
+            category.requirements.Add(optionalDefinition);
+            category.requirements.Add(obsoleteDefinition);
+            template.categories.Add(category);
+            ScreenshotCatalog catalog = ScriptableObject.CreateInstance<ScreenshotCatalog>();
+            ScreenshotCatalogUtility.InitializeCatalog(catalog, template);
+
+            ScreenshotCatalogUtility.AddSourceVersion(
+                catalog.categories.Single().requirements.Single(item => item.definitionId == "complete").slots.Single(), valid);
+            ScreenshotCatalogUtility.AddSourceVersion(
+                catalog.categories.Single().requirements.Single(item => item.definitionId == "obsolete").slots.Single(), valid);
+            category.requirements.Remove(obsoleteDefinition);
+            ScreenshotCatalogUtility.Synchronize(catalog);
+
+            ScreenshotCatalogGUI.GetRequiredProgress(catalog, out int complete, out int total);
+
+            Assert.That(total, Is.EqualTo(2));
+            Assert.That(complete, Is.EqualTo(1));
+            Object.DestroyImmediate(catalog);
+            Object.DestroyImmediate(template);
+        }
+
+        [Test]
+        public void CatalogStatusIconsMatchMasterDetailLegend()
+        {
+            Assert.That(ScreenshotCatalogGUI.GetStatusIcon(ScreenshotCatalogStatus.Complete), Is.EqualTo("✓"));
+            Assert.That(ScreenshotCatalogGUI.GetStatusIcon(ScreenshotCatalogStatus.SourceReady), Is.EqualTo("●"));
+            Assert.That(ScreenshotCatalogGUI.GetStatusIcon(ScreenshotCatalogStatus.Missing), Is.EqualTo("○"));
+            Assert.That(ScreenshotCatalogGUI.GetStatusIcon(ScreenshotCatalogStatus.Invalid), Is.EqualTo("!"));
+            Assert.That(ScreenshotCatalogGUI.GetStatusIcon(ScreenshotCatalogStatus.Obsolete), Is.EqualTo("—"));
+        }
+
+        [Test]
+        public void WindowInitialSelectionPrefersInvalidAndPreservesExplicitSelection()
+        {
+            string imagePath = TestFolder + "/selection-invalid.png";
+            CreatePngAsset(imagePath, 8, 8);
+            Texture2D invalid = AssetDatabase.LoadAssetAtPath<Texture2D>(imagePath);
+            ScreenshotTemplate template = ScriptableObject.CreateInstance<ScreenshotTemplate>();
+            ScreenshotCategoryDefinition categoryDefinition = new ScreenshotCategoryDefinition { id = "category", name = "Category" };
+            categoryDefinition.requirements.Add(CreateRequirementDefinition("missing", "Missing", true));
+            categoryDefinition.requirements.Add(CreateRequirementDefinition("invalid", "Invalid", true));
+            template.categories.Add(categoryDefinition);
+            ScreenshotCatalog catalog = ScriptableObject.CreateInstance<ScreenshotCatalog>();
+            ScreenshotCatalogUtility.InitializeCatalog(catalog, template);
+            ScreenshotCatalogRequirement invalidRequirement = catalog.categories.Single().requirements.Single(item => item.definitionId == "invalid");
+            ScreenshotCatalogUtility.AddSourceVersion(invalidRequirement.slots.Single(), invalid);
+            ScreenshotCatalogWindow window = ScriptableObject.CreateInstance<ScreenshotCatalogWindow>();
+
+            window.SetCatalog(catalog);
+
+            Assert.That(window.SelectedRequirementId, Is.EqualTo("invalid"));
+            ScreenshotCatalogCategory category = catalog.categories.Single();
+            ScreenshotCatalogRequirement missing = category.requirements.Single(item => item.definitionId == "missing");
+            window.SelectSlot(category, missing, missing.slots.Single());
+            window.EnsureSelectedSlot();
+            Assert.That(window.SelectedRequirementId, Is.EqualTo("missing"));
+
+            Object.DestroyImmediate(window);
+            Object.DestroyImmediate(catalog);
+            Object.DestroyImmediate(template);
+        }
+
+        [Test]
+        public void NextMissingAdvancesAtSlotLevel()
+        {
+            ScreenshotTemplate template = ScriptableObject.CreateInstance<ScreenshotTemplate>();
+            ScreenshotCategoryDefinition categoryDefinition = new ScreenshotCategoryDefinition { id = "category", name = "Category" };
+            ScreenshotRequirementDefinition requirementDefinition = new ScreenshotRequirementDefinition
+            {
+                id = "requirement",
+                name = "Screenshot",
+                width = 16,
+                height = 16
+            };
+            requirementDefinition.slots.Add(new ScreenshotSlotDefinition { id = "first", name = "First", required = true });
+            requirementDefinition.slots.Add(new ScreenshotSlotDefinition { id = "second", name = "Second", required = true });
+            categoryDefinition.requirements.Add(requirementDefinition);
+            template.categories.Add(categoryDefinition);
+            ScreenshotCatalog catalog = ScriptableObject.CreateInstance<ScreenshotCatalog>();
+            ScreenshotCatalogUtility.InitializeCatalog(catalog, template);
+            ScreenshotCatalogCategory category = catalog.categories.Single();
+            ScreenshotCatalogRequirement requirement = category.requirements.Single();
+            ScreenshotCatalogWindow window = ScriptableObject.CreateInstance<ScreenshotCatalogWindow>();
+            window.SetCatalog(catalog);
+            window.SelectSlot(category, requirement, requirement.slots[0]);
+
+            window.SelectNextMissingSlot();
+
+            Assert.That(window.SelectedSlotId, Is.EqualTo("second"));
+            Object.DestroyImmediate(window);
+            Object.DestroyImmediate(catalog);
+            Object.DestroyImmediate(template);
+        }
+
+        [Test]
+        public void NextCapturePathUsesConfiguredNamingAndSkipsExistingFile()
+        {
+            CreatePersistentSlot(out ScreenshotCatalog catalog, out ScreenshotTemplate template);
+            ScreenshotCatalogCategory category = catalog.categories.Single();
+            ScreenshotCatalogRequirement requirement = category.requirements.Single();
+            ScreenshotCatalogSlot slot = requirement.slots.Single();
+            requirement.name = "Hero Cover";
+            catalog.outputRoot = TestFolder;
+            string firstPath = ScreenshotCatalogUtility.GetNextCaptureAssetPath(catalog, category, requirement, slot);
+            string absolutePath = Path.Combine(Directory.GetParent(Application.dataPath).FullName, firstPath.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(absolutePath));
+            File.WriteAllBytes(absolutePath, new byte[] { 1 });
+
+            string nextPath = ScreenshotCatalogUtility.GetNextCaptureAssetPath(catalog, category, requirement, slot);
+
+            Assert.That(Path.GetFileName(firstPath), Is.EqualTo("Hero-Cover-01-v001.png"));
+            Assert.That(Path.GetFileName(nextPath), Is.EqualTo("Hero-Cover-01-v002.png"));
+            Object.DestroyImmediate(catalog);
+            Object.DestroyImmediate(template);
+        }
+
+        [Test]
+        public void WindowBuildsNamedMasterDetailRegionsAndSerializesPageState()
+        {
+            ScreenshotCatalogWindow source = ScriptableObject.CreateInstance<ScreenshotCatalogWindow>();
+            Assert.That(source.rootVisualElement.Q("screenshot-catalog-top-bar"), Is.Not.Null);
+            Assert.That(source.rootVisualElement.Q("screenshot-catalog-navigator-scroll"), Is.Not.Null);
+            Assert.That(source.rootVisualElement.Q("screenshot-catalog-workspace-scroll"), Is.Not.Null);
+            Assert.That(source.rootVisualElement.Q("screenshot-catalog-status-bar"), Is.Not.Null);
+            ScreenshotTemplate template = ScriptableObject.CreateInstance<ScreenshotTemplate>();
+            ScreenshotCategoryDefinition category = new ScreenshotCategoryDefinition { id = "category", name = "Category" };
+            category.requirements.Add(CreateRequirementDefinition("requirement", "Requirement", true));
+            template.categories.Add(category);
+            ScreenshotCatalog catalog = ScriptableObject.CreateInstance<ScreenshotCatalog>();
+            ScreenshotCatalogUtility.InitializeCatalog(catalog, template);
+            source.SetCatalog(catalog);
+            VisualElement navigator = source.rootVisualElement.Q("screenshot-catalog-navigator-contents");
+            Assert.That(navigator.childCount, Is.GreaterThan(0));
+            Assert.That(source.SelectedSlotId, Is.EqualTo("requirement-slot"));
+            source.SettingsPageVisible = true;
+            string json = EditorJsonUtility.ToJson(source);
+            ScreenshotCatalogWindow restored = ScriptableObject.CreateInstance<ScreenshotCatalogWindow>();
+
+            EditorJsonUtility.FromJsonOverwrite(json, restored);
+
+            Assert.That(restored.SettingsPageVisible, Is.True);
+            Object.DestroyImmediate(restored);
+            Object.DestroyImmediate(source);
+            Object.DestroyImmediate(catalog);
+            Object.DestroyImmediate(template);
+        }
+
         private static ScreenshotCatalogSlot CreatePersistentSlot(
             out ScreenshotCatalog catalog,
             out ScreenshotTemplate template)
@@ -611,6 +773,29 @@ namespace SkatanicStudios
             catalog = ScriptableObject.CreateInstance<ScreenshotCatalog>();
             ScreenshotCatalogUtility.InitializeCatalog(catalog, template);
             return catalog.categories.Single().requirements.Single().slots.Single();
+        }
+
+        private static ScreenshotRequirementDefinition CreateRequirementDefinition(
+            string id,
+            string name,
+            bool required)
+        {
+            ScreenshotRequirementDefinition definition = new ScreenshotRequirementDefinition
+            {
+                id = id,
+                name = name,
+                width = 16,
+                height = 16,
+                workflow = ScreenshotAssetWorkflow.Capture,
+                imageFormat = ScreenshotImageFormat.Png24
+            };
+            definition.slots.Add(new ScreenshotSlotDefinition
+            {
+                id = id + "-slot",
+                name = name,
+                required = required
+            });
+            return definition;
         }
 
         private static void CreatePngAsset(string assetPath, int width, int height)

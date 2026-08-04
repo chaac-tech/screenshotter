@@ -5,6 +5,60 @@ namespace SkatanicStudios
 {
     internal static class ScreenshotCatalogGUI
     {
+        internal static void GetRequiredProgress(ScreenshotCatalog catalog, out int complete, out int total)
+        {
+            complete = 0;
+            total = 0;
+            if (catalog == null)
+            {
+                return;
+            }
+
+            foreach (ScreenshotCatalogCategory category in catalog.categories)
+            {
+                if (category.obsolete)
+                {
+                    continue;
+                }
+                foreach (ScreenshotCatalogRequirement requirement in category.requirements)
+                {
+                    if (requirement.obsolete)
+                    {
+                        continue;
+                    }
+                    foreach (ScreenshotCatalogSlot slot in requirement.slots)
+                    {
+                        if (!slot.required || slot.obsolete)
+                        {
+                            continue;
+                        }
+                        total++;
+                        if (ScreenshotCatalogUtility.GetStatus(requirement, slot) == ScreenshotCatalogStatus.Complete)
+                        {
+                            complete++;
+                        }
+                    }
+                }
+            }
+        }
+
+        internal static string GetStatusIcon(ScreenshotCatalogStatus status)
+        {
+            switch (status)
+            {
+                case ScreenshotCatalogStatus.Complete:
+                    return "✓";
+                case ScreenshotCatalogStatus.SourceReady:
+                    return "●";
+                case ScreenshotCatalogStatus.Invalid:
+                    return "!";
+                case ScreenshotCatalogStatus.Obsolete:
+                    return "—";
+                default:
+                    return "○";
+            }
+        }
+
         internal static string GetSpecification(ScreenshotCatalogRequirement requirement)
         {
             return string.Format(
