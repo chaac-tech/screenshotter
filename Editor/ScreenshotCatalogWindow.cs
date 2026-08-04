@@ -116,12 +116,14 @@ namespace SkatanicStudios
         private void DrawTopBarGUI()
         {
             bool narrow = position.width < ScreenshotCatalogWindowView.NarrowLayoutThreshold;
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(6f);
+            EditorGUILayout.BeginVertical();
             if (narrow)
             {
                 EditorGUILayout.BeginHorizontal();
                 DrawTopCatalogControl();
                 DrawTopCameraControl();
-                DrawSettingsToggle();
                 EditorGUILayout.EndHorizontal();
                 EditorGUILayout.BeginHorizontal();
                 DrawTopOutputControl();
@@ -135,17 +137,19 @@ namespace SkatanicStudios
                 DrawTopCameraControl();
                 DrawTopOutputControl();
                 DrawTopProgressControl();
-                DrawSettingsToggle();
                 EditorGUILayout.EndHorizontal();
             }
+            EditorGUILayout.EndVertical();
+            GUILayout.Space(6f);
+            EditorGUILayout.EndHorizontal();
         }
 
         private void DrawTopCatalogControl()
         {
-            EditorGUILayout.BeginVertical(GUILayout.MinWidth(150f));
+            EditorGUILayout.BeginVertical(GUILayout.MinWidth(185f));
             EditorGUILayout.LabelField(Tip("Catalog", "Catalog that owns the requirements, versions, and synchronization state shown in this window."), EditorStyles.miniBoldLabel);
             ScreenshotCatalog newCatalog = (ScreenshotCatalog)EditorGUILayout.ObjectField(
-                catalog, typeof(ScreenshotCatalog), false, GUILayout.MinWidth(145f));
+                catalog, typeof(ScreenshotCatalog), false, GUILayout.MinWidth(180f));
             if (newCatalog != catalog)
             {
                 SetCatalog(newCatalog);
@@ -155,10 +159,12 @@ namespace SkatanicStudios
 
         private void DrawTopCameraControl()
         {
-            EditorGUILayout.BeginVertical(GUILayout.MinWidth(145f));
-            EditorGUILayout.LabelField(Tip("Capture Camera", "Scene Camera used for managed captures. The sole active camera is selected automatically when possible."), EditorStyles.miniBoldLabel);
+            EditorGUILayout.BeginVertical(GUILayout.MinWidth(190f));
+            EditorGUILayout.LabelField(
+                ScreenshotCatalogIcons.Content(ScreenshotCatalogIcons.Camera, "Capture Camera", "Scene Camera used for managed captures. The sole active camera is selected automatically when possible."),
+                EditorStyles.miniBoldLabel);
             Camera newCamera = (Camera)EditorGUILayout.ObjectField(
-                captureCamera, typeof(Camera), true, GUILayout.MinWidth(140f));
+                captureCamera, typeof(Camera), true, GUILayout.MinWidth(185f));
             if (newCamera != captureCamera)
             {
                 captureCamera = newCamera;
@@ -175,14 +181,24 @@ namespace SkatanicStudios
 
         private void DrawTopOutputControl()
         {
-            EditorGUILayout.BeginVertical(GUILayout.MinWidth(175f));
-            EditorGUILayout.LabelField(Tip("Output Folder", "Project-relative root beneath Assets where managed screenshots are organized by catalog and category."), EditorStyles.miniBoldLabel);
+            EditorGUILayout.BeginVertical(GUILayout.MinWidth(200f));
+            EditorGUILayout.LabelField(
+                ScreenshotCatalogIcons.Content(ScreenshotCatalogIcons.Folder, "Output Folder", "Project-relative root beneath Assets where managed screenshots are organized by catalog and category."),
+                EditorStyles.miniBoldLabel);
             EditorGUILayout.BeginHorizontal();
-            EditorGUI.BeginDisabledGroup(true);
-            EditorGUILayout.TextField(catalog == null ? "No catalog selected" : catalog.outputRoot, GUILayout.MinWidth(130f));
-            EditorGUI.EndDisabledGroup();
+            string outputPath = catalog == null ? "No catalog selected" : catalog.outputRoot;
+            Rect outputRect = GUILayoutUtility.GetRect(
+                GUIContent.none,
+                EditorStyles.textField,
+                GUILayout.MinWidth(130f),
+                GUILayout.Height(EditorGUIUtility.singleLineHeight),
+                GUILayout.ExpandWidth(true));
+            EditorGUI.SelectableLabel(outputRect, outputPath, EditorStyles.textField);
+            GUI.Label(outputRect, Tip(string.Empty, outputPath), GUIStyle.none);
             EditorGUI.BeginDisabledGroup(catalog == null);
-            if (GUILayout.Button(Tip("…", "Choose an output folder inside this project's Assets folder."), GUILayout.Width(28f)))
+            if (GUILayout.Button(
+                    ScreenshotCatalogIcons.Content(ScreenshotCatalogIcons.Folder, string.Empty, "Choose an output folder inside this project's Assets folder."),
+                    GUILayout.Width(30f), GUILayout.Height(EditorGUIUtility.singleLineHeight)))
             {
                 SelectOutputRoot();
             }
@@ -193,28 +209,27 @@ namespace SkatanicStudios
 
         private void DrawTopProgressControl()
         {
-            EditorGUILayout.BeginVertical(GUILayout.MinWidth(145f), GUILayout.MaxWidth(250f));
+            EditorGUILayout.BeginVertical(GUILayout.MinWidth(175f), GUILayout.MaxWidth(260f));
             ScreenshotCatalogGUI.GetRequiredProgress(catalog, out int complete, out int total);
             EditorGUILayout.LabelField(
-                Tip(complete + " / " + total + " Complete", "Completed required, non-obsolete slots. Optional and obsolete slots are excluded."),
+                Tip("Required completion", "Completed required, non-obsolete slots. Optional and obsolete slots are excluded."),
                 EditorStyles.miniBoldLabel);
             Rect progressRect = GUILayoutUtility.GetRect(130f, 17f, GUILayout.ExpandWidth(true));
-            EditorGUI.ProgressBar(progressRect, total == 0 ? 0f : (float)complete / total, string.Empty);
-            EditorGUILayout.EndVertical();
-        }
-
-        private void DrawSettingsToggle()
-        {
-            EditorGUILayout.BeginVertical(GUILayout.Width(74f));
-            GUILayout.Space(EditorGUIUtility.singleLineHeight + 2f);
-            string label = showSettingsPage ? "Capture" : "Settings";
-            if (GUILayout.Button(Tip(label, showSettingsPage
-                    ? "Return to the selected slot's capture workspace."
-                    : "Open catalog, capture, and Google Drive settings."), GUILayout.Width(70f)))
+            float progress = total == 0 ? 0f : (float)complete / total;
+            Color completeColor = ScreenshotCatalogGUI.GetStatusColor(ScreenshotCatalogStatus.Complete);
+            EditorGUI.DrawRect(progressRect, new Color(0f, 0f, 0f, 0.22f));
+            if (progress > 0f)
             {
-                showSettingsPage = !showSettingsPage;
-                RepaintContainers();
+                Rect fillRect = progressRect;
+                fillRect.width *= progress;
+                EditorGUI.DrawRect(fillRect, new Color(completeColor.r, completeColor.g, completeColor.b, 0.72f));
             }
+            GUIStyle progressStyle = new GUIStyle(EditorStyles.miniBoldLabel)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                clipping = TextClipping.Clip
+            };
+            GUI.Label(progressRect, complete + " / " + total + " required complete", progressStyle);
             EditorGUILayout.EndVertical();
         }
 
@@ -270,14 +285,12 @@ namespace SkatanicStudios
                 }
 
                 anyVisible = true;
-                int completed = visibleSlots.Count(item =>
-                    ScreenshotCatalogUtility.GetStatus(item.requirement, item.slot) == ScreenshotCatalogStatus.Complete);
                 VisualElement categoryHeader = new VisualElement();
                 categoryHeader.AddToClassList("screenshot-catalog-category-header");
                 Label categoryName = new Label(category.name + (category.obsolete ? " (Obsolete)" : string.Empty));
                 categoryName.tooltip = "Requirement category copied from the catalog's master template.";
                 categoryName.AddToClassList("screenshot-catalog-category-name");
-                Label categoryCount = new Label(completed + " / " + visibleSlots.Length);
+                Label categoryCount = new Label(visibleSlots.Length + (visibleSlots.Length == 1 ? " slot" : " slots"));
                 categoryCount.AddToClassList("screenshot-catalog-category-count");
                 categoryHeader.Add(categoryName);
                 categoryHeader.Add(categoryCount);
@@ -303,7 +316,21 @@ namespace SkatanicStudios
             GUIStyle searchStyle = GUI.skin.FindStyle("ToolbarSeachTextField") ??
                                    GUI.skin.FindStyle("ToolbarSearchTextField") ??
                                    EditorStyles.toolbarTextField;
+            GUI.SetNextControlName("ScreenshotCatalogSearch");
             string newSearch = GUILayout.TextField(requirementSearch ?? string.Empty, searchStyle, GUILayout.MinWidth(70f));
+            Rect searchRect = GUILayoutUtility.GetLastRect();
+            if (string.IsNullOrEmpty(requirementSearch) && GUI.GetNameOfFocusedControl() != "ScreenshotCatalogSearch")
+            {
+                GUIStyle placeholderStyle = new GUIStyle(EditorStyles.miniLabel)
+                {
+                    alignment = TextAnchor.MiddleLeft,
+                    padding = new RectOffset(7, 0, 0, 0),
+                    clipping = TextClipping.Clip
+                };
+                placeholderStyle.normal.textColor = new Color(0.65f, 0.65f, 0.65f, 0.8f);
+                GUI.Label(searchRect, "Search assets…", placeholderStyle);
+            }
+            GUI.Label(searchRect, Tip(string.Empty, "Filter catalog slots by category, requirement, or slot name."), GUIStyle.none);
             if (newSearch != requirementSearch)
             {
                 requirementSearch = newSearch;
@@ -312,8 +339,22 @@ namespace SkatanicStudios
                     windowView.RefreshNavigator();
                 }
             }
+            if (!string.IsNullOrEmpty(requirementSearch) && GUILayout.Button(
+                    Tip("×", "Clear the asset search."),
+                    EditorStyles.toolbarButton,
+                    GUILayout.Width(22f)))
+            {
+                requirementSearch = string.Empty;
+                GUI.FocusControl(null);
+                if (windowView != null)
+                {
+                    windowView.RefreshNavigator();
+                }
+            }
             ScreenshotRequirementFilter newFilter = (ScreenshotRequirementFilter)EditorGUILayout.EnumPopup(
                 requirementFilter, EditorStyles.toolbarPopup, GUILayout.Width(82f));
+            Rect filterRect = GUILayoutUtility.GetLastRect();
+            GUI.Label(filterRect, Tip(string.Empty, "Show slots with the selected catalog status."), GUIStyle.none);
             if (newFilter != requirementFilter)
             {
                 requirementFilter = newFilter;
@@ -322,12 +363,21 @@ namespace SkatanicStudios
                     windowView.RefreshNavigator();
                 }
             }
-            EditorGUILayout.EndHorizontal();
-            if (GUILayout.Button(Tip("Next Missing", "Select the next required slot whose workflow is missing an asset."), EditorStyles.miniButton))
+            string settingsTooltip = showSettingsPage
+                ? "Return to the selected slot's capture workspace."
+                : "Open catalog, capture, and Google Drive settings.";
+            if (GUILayout.Button(
+                    ScreenshotCatalogIcons.Content(
+                        showSettingsPage ? ScreenshotCatalogIcons.Play : ScreenshotCatalogIcons.Settings,
+                        string.Empty,
+                        settingsTooltip),
+                    EditorStyles.toolbarButton,
+                    GUILayout.Width(28f)))
             {
-                SelectNextMissingSlot();
+                showSettingsPage = !showSettingsPage;
+                RepaintContainers();
             }
-            EditorGUILayout.Space(3f);
+            EditorGUILayout.EndHorizontal();
         }
 
         private VisualElement CreateNavigatorSlotRow(
@@ -358,17 +408,34 @@ namespace SkatanicStudios
             row.Add(name);
             if (armed)
             {
-                Label armedIcon = new Label("▶");
-                armedIcon.tooltip = "This slot is armed for capture.";
+                Label armedIcon = new Label("ARMED");
+                armedIcon.tooltip = "This slot is the current capture target.";
                 armedIcon.AddToClassList("screenshot-catalog-slot-armed");
                 row.Add(armedIcon);
             }
-            Label statusIcon = new Label(ScreenshotCatalogGUI.GetStatusIcon(status));
+            Label statusIcon = new Label(GetNavigatorStatusLabel(status));
             statusIcon.tooltip = ScreenshotCatalogGUI.GetStatusTooltip(status);
             statusIcon.AddToClassList("screenshot-catalog-slot-status");
             statusIcon.style.color = ScreenshotCatalogGUI.GetStatusColor(status);
             row.Add(statusIcon);
             return row;
+        }
+
+        internal static string GetNavigatorStatusLabel(ScreenshotCatalogStatus status)
+        {
+            switch (status)
+            {
+                case ScreenshotCatalogStatus.Complete:
+                    return "✓ Complete";
+                case ScreenshotCatalogStatus.SourceReady:
+                    return "● Ready";
+                case ScreenshotCatalogStatus.Invalid:
+                    return "! Invalid";
+                case ScreenshotCatalogStatus.Obsolete:
+                    return "— Obsolete";
+                default:
+                    return "○ Missing";
+            }
         }
 
         private void DrawWorkspaceGUI()
@@ -477,7 +544,16 @@ namespace SkatanicStudios
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField(GetSlotWorkspaceTitle(requirement, slot), EditorStyles.largeLabel);
             GUILayout.FlexibleSpace();
+            if (IsArmed(category, requirement, slot))
+            {
+                DrawTextBadge(
+                    "Armed",
+                    new Color(0.35f, 0.65f, 1f),
+                    "This selected slot is the current capture target.");
+                GUILayout.Space(5f);
+            }
             DrawStatusBadge(status, ScreenshotCatalogUtility.GetStatusLabel(status));
+            GUILayout.Space(4f);
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.Space(5f);
 
@@ -490,19 +566,37 @@ namespace SkatanicStudios
                 EditorGUILayout.HelpBox(requirement.guidance, MessageType.None);
             }
             if (!string.IsNullOrWhiteSpace(requirement.sourceUrl) &&
-                GUILayout.Button(Tip("Open Source Guidelines", "Open the specification URL stored by the master template."), EditorStyles.miniButton))
+                GUILayout.Button(
+                    ScreenshotCatalogIcons.Content(
+                        ScreenshotCatalogIcons.Help,
+                        "Open Source Guidelines",
+                        "Open the specification URL stored by the master template."),
+                    EditorStyles.miniButton,
+                    GUILayout.Height(23f)))
             {
                 Application.OpenURL(requirement.sourceUrl);
             }
 
+            DrawArmedTargetNotice(category, requirement, slot);
+
             if (requirement.workflow != ScreenshotAssetWorkflow.External)
             {
                 EditorGUILayout.Space(8f);
-                EditorGUI.BeginDisabledGroup(true);
-                EditorGUILayout.TextField(
-                    Tip("Next Capture File", "Filename and location that the next managed source capture will use."),
-                    ScreenshotCatalogUtility.GetNextCaptureAssetPath(catalog, category, requirement, slot));
-                EditorGUI.EndDisabledGroup();
+                string nextCapturePath = ScreenshotCatalogUtility.GetNextCaptureAssetPath(catalog, category, requirement, slot);
+                EditorGUILayout.BeginHorizontal();
+                EditorGUILayout.LabelField(
+                    Tip("Next capture", "The next managed source capture will be saved to " + nextCapturePath),
+                    EditorStyles.miniBoldLabel,
+                    GUILayout.Width(86f));
+                GUIContent fileName = Tip(Path.GetFileName(nextCapturePath), nextCapturePath);
+                Rect nextCaptureRect = GUILayoutUtility.GetRect(
+                    GUIContent.none,
+                    EditorStyles.textField,
+                    GUILayout.Height(EditorGUIUtility.singleLineHeight),
+                    GUILayout.ExpandWidth(true));
+                EditorGUI.SelectableLabel(nextCaptureRect, fileName.text, EditorStyles.textField);
+                GUI.Label(nextCaptureRect, Tip(string.Empty, nextCapturePath), GUIStyle.none);
+                EditorGUILayout.EndHorizontal();
             }
 
             EditorGUILayout.Space(7f);
@@ -528,8 +622,35 @@ namespace SkatanicStudios
             {
                 EditorGUILayout.HelpBox(validationMessage, MessageType.Error);
             }
-            DrawSelectedSlotActions(category, requirement, slot);
             DrawSelectedSlotWarnings(requirement, slot);
+            DrawSelectedSlotActions(category, requirement, slot);
+        }
+
+        private void DrawArmedTargetNotice(
+            ScreenshotCatalogCategory selectedCategory,
+            ScreenshotCatalogRequirement selectedRequirement,
+            ScreenshotCatalogSlot selectedSlot)
+        {
+            if (!TryGetArmedSlot(out ScreenshotCatalogCategory armedCategory,
+                    out ScreenshotCatalogRequirement armedRequirement,
+                    out ScreenshotCatalogSlot armedSlot) ||
+                IsArmed(selectedCategory, selectedRequirement, selectedSlot))
+            {
+                return;
+            }
+
+            EditorGUILayout.Space(5f);
+            EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
+            EditorGUILayout.LabelField(
+                Tip(
+                    "Capture target: " + armedCategory.name + " / " + GetSlotDisplayName(armedRequirement, armedSlot),
+                    "A different slot is currently armed. Selecting a slot does not change the capture target."),
+                EditorStyles.miniLabel);
+            if (GUILayout.Button(Tip("Select", "Select the currently armed slot."), EditorStyles.miniButton, GUILayout.Width(54f)))
+            {
+                SelectSlot(armedCategory, armedRequirement, armedSlot);
+            }
+            EditorGUILayout.EndHorizontal();
         }
 
         private void DrawSelectedSlotActions(
@@ -540,35 +661,59 @@ namespace SkatanicStudios
             bool canCapture = !category.obsolete && !requirement.obsolete && !slot.obsolete &&
                               requirement.workflow != ScreenshotAssetWorkflow.External;
             bool armed = IsArmed(category, requirement, slot);
-            EditorGUILayout.Space(10f);
+            EditorGUILayout.Space(7f);
             Rect divider = GUILayoutUtility.GetRect(1f, 1f, GUILayout.ExpandWidth(true));
             EditorGUI.DrawRect(divider, new Color(0.5f, 0.5f, 0.5f, 0.35f));
-            EditorGUILayout.Space(10f);
+            EditorGUILayout.Space(7f);
             EditorGUILayout.BeginHorizontal();
             EditorGUI.BeginDisabledGroup(!canCapture);
-            if (GUILayout.Button(Tip(armed ? "Disarm" : "Arm", armed
-                    ? "Disarm this slot without changing assigned images."
-                    : "Arm this slot as the target for the next managed capture."), GUILayout.Height(32f)))
+            if (GUILayout.Button(
+                    ScreenshotCatalogIcons.Content(
+                        ScreenshotCatalogIcons.Arm,
+                        armed ? "Disarm" : "Arm",
+                    armed
+                        ? "Disarm this slot without changing assigned images."
+                        : "Arm this slot as the target for the next managed capture."),
+                    GUILayout.Width(145f),
+                    GUILayout.Height(34f)))
             {
                 ToggleArmedSlot(category, requirement, slot);
             }
-            if (GUILayout.Button(Tip("Apply Resolution", "Set the Unity Game View to this slot's exact configured resolution."), GUILayout.Height(32f)))
+            if (GUILayout.Button(
+                    ScreenshotCatalogIcons.Content(
+                        ScreenshotCatalogIcons.Resolution,
+                        "Apply Resolution",
+                        "Set the Unity Game View to this slot's exact configured resolution."),
+                    GUILayout.Width(190f),
+                    GUILayout.Height(34f)))
             {
                 ApplyGameViewResolution(requirement, true);
             }
             EditorGUI.EndDisabledGroup();
 
-            EditorGUI.BeginDisabledGroup(!canCapture || !armed || captureCamera == null ||
-                                         !EditorApplication.isPlaying || !IsValidOutputRoot(catalog.outputRoot));
+            bool captureReady = canCapture && armed && captureCamera != null &&
+                                EditorApplication.isPlaying && IsValidOutputRoot(catalog.outputRoot);
+            EditorGUI.BeginDisabledGroup(!captureReady);
             string captureLabel = useScreenshotter ? "Capture (F12)" : "Capture";
             if (captureActionReference != null && captureActionReference.action != null)
             {
                 captureLabel = "Capture (" + captureActionReference.action.name + ")";
             }
-            if (GUILayout.Button(Tip(captureLabel, "Capture the selected Camera, import a new source version, and make it active."), GUILayout.Height(32f)))
+            Color previousBackground = GUI.backgroundColor;
+            if (captureReady)
+            {
+                GUI.backgroundColor = new Color(0.28f, 0.62f, 1f);
+            }
+            if (GUILayout.Button(
+                    ScreenshotCatalogIcons.Content(
+                        ScreenshotCatalogIcons.Play,
+                        captureLabel,
+                        "Capture the selected Camera, import a new source version, and make it active."),
+                    GUILayout.Height(34f)))
             {
                 CaptureArmedSlot();
             }
+            GUI.backgroundColor = previousBackground;
             EditorGUI.EndDisabledGroup();
             EditorGUILayout.EndHorizontal();
         }
@@ -589,7 +734,7 @@ namespace SkatanicStudios
             }
             if (!EditorApplication.isPlaying)
             {
-                EditorGUILayout.HelpBox("Enter Play Mode before capturing this slot.", MessageType.Info);
+                EditorGUILayout.HelpBox("Capture unavailable: enter Play Mode. You can still arm the slot or apply its resolution now.", MessageType.Info);
             }
         }
 
@@ -608,31 +753,90 @@ namespace SkatanicStudios
             string assetPath = reviewTexture == null ? "No active asset" : AssetDatabase.GetAssetPath(reviewTexture);
             bool valid = reviewTexture != null && ScreenshotCatalogUtility.ValidateTexture(reviewTexture, requirement, out _);
             bool narrow = position.width < ScreenshotCatalogWindowView.NarrowLayoutThreshold;
+            string assetRole = GetReviewAssetRole(requirement, slot, reviewTexture);
+            string assetLabel = assetRole + ": " + Path.GetFileName(assetPath);
             if (narrow)
             {
-                EditorGUILayout.LabelField(Tip(Path.GetFileName(assetPath), assetPath), EditorStyles.miniLabel);
+                EditorGUILayout.LabelField(Tip(assetLabel, assetPath), EditorStyles.miniLabel);
             }
             EditorGUILayout.BeginHorizontal();
             if (!narrow)
             {
-                EditorGUILayout.LabelField(Tip(Path.GetFileName(assetPath), assetPath), EditorStyles.miniLabel, GUILayout.MinWidth(130f));
+                EditorGUILayout.LabelField(
+                    Tip(assetLabel, assetPath),
+                    EditorStyles.miniLabel,
+                    GUILayout.MinWidth(180f),
+                    GUILayout.MaxWidth(300f));
                 GUILayout.FlexibleSpace();
             }
-            DrawFooterStatus(reviewTexture != null, "File found", "No active asset");
-            DrawFooterStatus(valid, "Specification valid", "Resolution, format, or transparency is invalid");
+            DrawFooterStatus(
+                reviewTexture != null,
+                "File found",
+                "No file",
+                "No active review asset is assigned.",
+                Color.gray);
+            DrawFooterStatus(
+                valid,
+                "Specification valid",
+                reviewTexture == null ? "Spec pending" : "Spec invalid",
+                reviewTexture == null
+                    ? "Assign the required review asset before validating its specification."
+                    : "The active asset does not match the required resolution, format, or transparency setting.",
+                reviewTexture == null
+                    ? Color.gray
+                    : ScreenshotCatalogGUI.GetStatusColor(ScreenshotCatalogStatus.Invalid));
             DrawFooterStatus(status == ScreenshotCatalogStatus.Complete,
                 "Workflow complete",
-                ScreenshotCatalogUtility.GetStatusLabel(status));
+                ScreenshotCatalogUtility.GetStatusLabel(status),
+                ScreenshotCatalogGUI.GetStatusTooltip(status),
+                ScreenshotCatalogGUI.GetStatusColor(status));
             EditorGUILayout.EndHorizontal();
         }
 
-        private static void DrawFooterStatus(bool success, string successLabel, string failureLabel)
+        internal static string GetReviewAssetRole(
+            ScreenshotCatalogRequirement requirement,
+            ScreenshotCatalogSlot slot,
+            Texture2D reviewTexture)
         {
-            Color previousColor = GUI.color;
-            GUI.color = success ? ScreenshotCatalogGUI.GetStatusColor(ScreenshotCatalogStatus.Complete) : Color.gray;
-            GUILayout.Label(Tip((success ? "✓  " : "○  ") + (success ? successLabel : failureLabel),
-                success ? successLabel : failureLabel), EditorStyles.miniBoldLabel, GUILayout.Width(138f));
-            GUI.color = previousColor;
+            if (reviewTexture != null && reviewTexture == slot.activeFinal)
+            {
+                return "Active final";
+            }
+            if (reviewTexture != null && reviewTexture == slot.activeSource)
+            {
+                return "Active source";
+            }
+            return requirement.workflow == ScreenshotAssetWorkflow.Capture
+                ? "Active source"
+                : "Review asset";
+        }
+
+        private static void DrawFooterStatus(
+            bool success,
+            string successLabel,
+            string failureLabel,
+            string failureTooltip,
+            Color failureColor)
+        {
+            Color color = success ? ScreenshotCatalogGUI.GetStatusColor(ScreenshotCatalogStatus.Complete) : failureColor;
+            Rect rect = GUILayoutUtility.GetRect(
+                92f,
+                20f,
+                GUILayout.MinWidth(92f),
+                GUILayout.MaxWidth(155f),
+                GUILayout.ExpandWidth(true),
+                GUILayout.Height(20f));
+            EditorGUI.DrawRect(rect, new Color(color.r, color.g, color.b, success ? 0.14f : 0.07f));
+            GUIStyle style = new GUIStyle(EditorStyles.miniBoldLabel)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                clipping = TextClipping.Clip
+            };
+            style.normal.textColor = color;
+            GUIContent content = success
+                ? ScreenshotCatalogIcons.Content(ScreenshotCatalogIcons.Check, successLabel, successLabel)
+                : Tip("○  " + failureLabel, failureTooltip);
+            GUI.Label(rect, content, style);
         }
 
         private void DrawHeaderGUI()
@@ -815,7 +1019,8 @@ namespace SkatanicStudios
                 EditorUtility.SetDirty(catalog);
             }
 
-            if (GUILayout.Button(Tip(
+            if (GUILayout.Button(ScreenshotCatalogIcons.Content(
+                    ScreenshotCatalogIcons.Refresh,
                     "Synchronize From Template",
                     "Add or update included requirements from the master template, preserve capture history, mark removed populated entries obsolete, and prune empty obsolete entries.")))
             {
@@ -1098,7 +1303,10 @@ namespace SkatanicStudios
             EditorGUI.BeginDisabledGroup(googleDriveBusy || !configured || !authorized);
             EditorGUILayout.BeginHorizontal();
             if (GUILayout.Button(
-                    Tip("Pull New", "Download new PNG files from each category's Source and Final folders, import them into the project, and attach filenames that match catalog slots."),
+                    ScreenshotCatalogIcons.Content(
+                        ScreenshotCatalogIcons.Refresh,
+                        "Pull New",
+                        "Download new PNG files from each category's Source and Final folders, import them into the project, and attach filenames that match catalog slots."),
                     GUILayout.Height(26f)))
             {
                 PullNewFromGoogleDrive();
@@ -1291,13 +1499,6 @@ namespace SkatanicStudios
             if (newFilter != requirementFilter)
             {
                 requirementFilter = newFilter;
-            }
-            if (GUILayout.Button(
-                    Tip("Next Missing", "Select, expand, and scroll to the next missing required requirement."),
-                    EditorStyles.toolbarButton,
-                    GUILayout.Width(92f)))
-            {
-                SelectNextMissing(categories);
             }
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.Space(2f);
@@ -1508,83 +1709,155 @@ namespace SkatanicStudios
             Action<Texture2D> assign,
             Action<int> remove)
         {
-            EditorGUI.BeginChangeCheck();
             string assetTooltip = label == "Source"
                 ? "Active raw capture for this slot. Assign an existing PNG or capture a new managed version."
                 : "Active externally prepared final PNG. Capture Then Final and External workflows require this asset for completion.";
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField(Tip(label, assetTooltip));
-            Texture2D selected = (Texture2D)EditorGUILayout.ObjectField(
-                active,
-                typeof(Texture2D),
-                false,
-                GUILayout.Width(72f),
-                GUILayout.Height(64f));
+            EditorGUILayout.LabelField(Tip(label, assetTooltip), EditorStyles.boldLabel);
+            GUILayout.FlexibleSpace();
+            GUILayout.Label(versions.Count + (versions.Count == 1 ? " retained version" : " retained versions"), EditorStyles.miniLabel);
             EditorGUILayout.EndHorizontal();
-            if (EditorGUI.EndChangeCheck())
-            {
-                assign(selected);
-                EditorUtility.SetDirty(catalog);
-            }
+            EditorGUILayout.Space(4f);
 
+            EditorGUILayout.BeginHorizontal();
+            DrawAssetPreview(active);
+            GUILayout.Space(8f);
+
+            EditorGUILayout.BeginVertical();
             if (versions.Count == 0)
             {
+                EditorGUILayout.LabelField(
+                    "No active " + label.ToLowerInvariant() + " asset",
+                    EditorStyles.miniBoldLabel);
+                EditorGUILayout.LabelField(
+                    label == "Source"
+                        ? "Capture or assign a PNG to create the first source version."
+                        : "Assign the externally prepared PNG to create the first final version.",
+                    EditorStyles.wordWrappedMiniLabel);
+            }
+            else
+            {
+                string[] versionLabels = versions.Select((texture, index) =>
+                    texture == null ? "Missing version " + (index + 1) : texture.name).ToArray();
+                int currentIndex = versions.IndexOf(active);
+                if (currentIndex < 0)
+                {
+                    currentIndex = versions.Count - 1;
+                }
+
+                EditorGUILayout.BeginHorizontal();
+                EditorGUILayout.LabelField(
+                    Tip("Active", "Select which retained " + label.ToLowerInvariant() + " version is active for this slot."),
+                    GUILayout.Width(54f));
+                int newIndex = EditorGUILayout.Popup(currentIndex, versionLabels, GUILayout.MinWidth(100f));
+                EditorGUILayout.EndHorizontal();
+                if (newIndex != currentIndex)
+                {
+                    assign(versions[newIndex]);
+                    EditorUtility.SetDirty(catalog);
+                    RepaintContainers();
+                }
+
+                Texture2D selectedVersion = versions[newIndex];
+                bool tracked = ScreenshotCatalogUtility.IsVersionTracked(slot, finalAsset, selectedVersion);
+                bool synced = tracked && ScreenshotGoogleDriveService.IsVersionSynced(catalog, slot, finalAsset, selectedVersion);
+                EditorGUILayout.Space(3f);
+                EditorGUILayout.BeginHorizontal();
+                DrawTextBadge(
+                    synced ? "On Drive" : tracked ? "Upload pending" : "Not tracked",
+                    synced ? ScreenshotCatalogGUI.GetStatusColor(ScreenshotCatalogStatus.Complete) :
+                        tracked ? ScreenshotCatalogGUI.GetStatusColor(ScreenshotCatalogStatus.SourceReady) : Color.gray,
+                    synced
+                        ? "This version has a Google Drive file binding for the selected sync profile."
+                        : tracked
+                            ? "This version is tracked and will be uploaded by the selected sync profile."
+                            : "This version remains in catalog history but is excluded from Google Drive sync.");
+                GUILayout.FlexibleSpace();
+                if (GUILayout.Button(
+                        Tip(tracked ? "Untrack" : "Track", tracked
+                            ? "Exclude this version from future Drive sync without removing its catalog history, local PNG, or existing Drive binding."
+                            : "Include this version in Google Drive sync. An existing binding will be reused when available."),
+                        EditorStyles.miniButton,
+                        GUILayout.Width(68f)))
+                {
+                    Undo.RecordObject(catalog, tracked ? "Untrack Screenshot Version" : "Track Screenshot Version");
+                    ScreenshotCatalogUtility.SetVersionTracked(slot, finalAsset, selectedVersion, !tracked);
+                    EditorUtility.SetDirty(catalog);
+                    RepaintContainers();
+                }
+
+                GUILayout.Space(4f);
+                Color previousBackground = GUI.backgroundColor;
+                GUI.backgroundColor = new Color(1f, 0.48f, 0.48f);
+                bool removeClicked = GUILayout.Button(
+                    ScreenshotCatalogIcons.Content(
+                        ScreenshotCatalogIcons.Remove,
+                        "Remove",
+                        "Remove this version from catalog history. The local PNG and Drive file are kept."),
+                    EditorStyles.miniButton,
+                    GUILayout.Width(78f));
+                GUI.backgroundColor = previousBackground;
+                if (removeClicked && EditorUtility.DisplayDialog(
+                        "Remove Screenshot Version",
+                        "Remove " + (selectedVersion == null ? "this missing version" : selectedVersion.name) +
+                        " from catalog history?\n\nIts local PNG and existing Google Drive file will not be deleted.",
+                        "Remove from Catalog",
+                        "Cancel"))
+                {
+                    Undo.RecordObject(catalog, "Remove Screenshot Version");
+                    remove(newIndex);
+                    EditorUtility.SetDirty(catalog);
+                    RepaintContainers();
+                }
+                EditorGUILayout.EndHorizontal();
+            }
+
+            EditorGUILayout.Space(4f);
+            EditorGUI.BeginChangeCheck();
+            Texture2D added = (Texture2D)EditorGUILayout.ObjectField(
+                Tip(versions.Count == 0 ? "Assign PNG" : "Add version", "Assign a project PNG and retain it as a new catalog version."),
+                null,
+                typeof(Texture2D),
+                false,
+                GUILayout.Height(EditorGUIUtility.singleLineHeight),
+                GUILayout.ExpandWidth(true));
+            if (EditorGUI.EndChangeCheck() && added != null)
+            {
+                assign(added);
+                EditorUtility.SetDirty(catalog);
+                RepaintContainers();
+            }
+
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.EndVertical();
+        }
+
+        private static void DrawAssetPreview(Texture2D active)
+        {
+            Rect previewRect = GUILayoutUtility.GetRect(80f, 80f, GUILayout.Width(80f), GUILayout.Height(80f));
+            EditorGUI.DrawRect(previewRect, new Color(0f, 0f, 0f, 0.2f));
+            Rect inset = new Rect(previewRect.x + 3f, previewRect.y + 3f, previewRect.width - 6f, previewRect.height - 6f);
+            if (active == null)
+            {
+                GUIStyle emptyStyle = new GUIStyle(EditorStyles.centeredGreyMiniLabel)
+                {
+                    alignment = TextAnchor.MiddleCenter,
+                    wordWrap = true,
+                    clipping = TextClipping.Clip
+                };
+                GUI.Label(inset, "No image", emptyStyle);
                 return;
             }
 
-            string[] labels = versions.Select((texture, index) => texture == null ? "Missing v" + (index + 1) : texture.name).ToArray();
-            int currentIndex = versions.IndexOf(active);
-            if (currentIndex < 0)
+            GUI.DrawTexture(inset, active, ScaleMode.ScaleToFit, true);
+            EditorGUIUtility.AddCursorRect(previewRect, MouseCursor.Link);
+            if (GUI.Button(previewRect, Tip(string.Empty, "Select " + active.name + " in the Project window."), GUIStyle.none))
             {
-                currentIndex = versions.Count - 1;
+                Selection.activeObject = active;
+                EditorGUIUtility.PingObject(active);
             }
-            EditorGUILayout.BeginHorizontal();
-            int newIndex = EditorGUILayout.Popup(
-                Tip(label + " Version", "Select which retained " + label.ToLowerInvariant() + " version is active for this slot."),
-                currentIndex,
-                labels);
-            if (newIndex != currentIndex)
-            {
-                assign(versions[newIndex]);
-                EditorUtility.SetDirty(catalog);
-            }
-            Texture2D selectedVersion = versions[newIndex];
-            bool tracked = ScreenshotCatalogUtility.IsVersionTracked(slot, finalAsset, selectedVersion);
-            bool synced = tracked && ScreenshotGoogleDriveService.IsVersionSynced(catalog, slot, finalAsset, selectedVersion);
-            Color previousColor = GUI.color;
-            GUI.color = synced
-                ? new Color(0.35f, 0.8f, 0.4f)
-                : tracked ? new Color(0.95f, 0.75f, 0.25f) : Color.gray;
-            GUILayout.Label(
-                Tip(synced ? "Drive" : tracked ? "Pending" : "Untracked", synced
-                    ? "This version has a Google Drive file binding for the selected sync profile."
-                    : tracked
-                        ? "This version is tracked and will be uploaded by the selected sync profile."
-                        : "This version remains in catalog history but is excluded from Google Drive sync."),
-                EditorStyles.miniBoldLabel,
-                GUILayout.Width(58f));
-            GUI.color = previousColor;
-            if (GUILayout.Button(
-                    Tip(tracked ? "Untrack" : "Track", tracked
-                        ? "Exclude this version from future Drive sync without removing its catalog history, local PNG, or existing Drive binding."
-                        : "Include this version in Google Drive sync. An existing binding will be reused when available."),
-                    GUILayout.Width(62f)))
-            {
-                Undo.RecordObject(catalog, tracked ? "Untrack Screenshot Version" : "Track Screenshot Version");
-                ScreenshotCatalogUtility.SetVersionTracked(slot, finalAsset, selectedVersion, !tracked);
-                EditorUtility.SetDirty(catalog);
-                RepaintContainers();
-            }
-            if (GUILayout.Button(
-                    Tip("Remove", "Remove this version from catalog history without deleting its project file or existing Drive file."),
-                    GUILayout.Width(58f)))
-            {
-                Undo.RecordObject(catalog, "Remove Screenshot Version");
-                remove(newIndex);
-                EditorUtility.SetDirty(catalog);
-                RepaintContainers();
-            }
-            EditorGUILayout.EndHorizontal();
         }
 
         private void Arm(ScreenshotCatalogCategory category, ScreenshotCatalogRequirement requirement, ScreenshotCatalogSlot slot)
@@ -1813,32 +2086,6 @@ namespace SkatanicStudios
                 default:
                     return true;
             }
-        }
-
-        internal void SelectNextMissingSlot()
-        {
-            if (catalog == null)
-            {
-                return;
-            }
-            var missing = catalog.categories
-                .SelectMany(category => category.requirements.SelectMany(requirement => requirement.slots
-                    .Where(slot => slot.required &&
-                                   ScreenshotCatalogUtility.GetStatus(requirement, slot) == ScreenshotCatalogStatus.Missing)
-                    .Where(slot => string.IsNullOrWhiteSpace(requirementSearch) ||
-                                   category.name.IndexOf(requirementSearch, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                   requirement.name.IndexOf(requirementSearch, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                   slot.name.IndexOf(requirementSearch, StringComparison.OrdinalIgnoreCase) >= 0)
-                    .Select(slot => new { category, requirement, slot })))
-                .ToArray();
-            if (missing.Length == 0)
-            {
-                return;
-            }
-            int current = Array.FindIndex(missing, item => IsSelected(item.category, item.requirement, item.slot));
-            var next = missing[(current + 1) % missing.Length];
-            requirementFilter = ScreenshotRequirementFilter.Missing;
-            SelectSlot(next.category, next.requirement, next.slot);
         }
 
         private static string GetSlotDisplayName(ScreenshotCatalogRequirement requirement, ScreenshotCatalogSlot slot)
@@ -2194,29 +2441,6 @@ namespace SkatanicStudios
                 default:
                     return true;
             }
-        }
-
-        private void SelectNextMissing(ScreenshotCatalogCategory[] categories)
-        {
-            ScreenshotCatalogRequirement[] missingRequirements = categories
-                .SelectMany(category => category.requirements)
-                .Where(requirement => string.IsNullOrWhiteSpace(requirementSearch) ||
-                    requirement.name.IndexOf(requirementSearch, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                    requirement.slots.Any(slot => slot.name.IndexOf(requirementSearch, StringComparison.OrdinalIgnoreCase) >= 0))
-                .Where(requirement => requirement.slots.Any(slot => slot.required &&
-                    ScreenshotCatalogUtility.GetStatus(requirement, slot) == ScreenshotCatalogStatus.Missing))
-                .ToArray();
-            if (missingRequirements.Length == 0)
-            {
-                return;
-            }
-
-            int currentIndex = Array.FindIndex(missingRequirements, requirement => requirement.definitionId == expandedRequirementId);
-            ScreenshotCatalogRequirement next = missingRequirements[(currentIndex + 1) % missingRequirements.Length];
-            requirementFilter = ScreenshotRequirementFilter.Missing;
-            expandedRequirementId = next.definitionId;
-            pendingScrollRequirementId = next.definitionId;
-            RepaintContainers();
         }
 
         private void ScrollToRequirementIfRequested(ScreenshotCatalogRequirement requirement, Rect headerRect)

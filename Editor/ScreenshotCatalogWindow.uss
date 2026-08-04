@@ -3,9 +3,11 @@
 }
 
 .screenshot-catalog-top-bar {
-    padding: 6px 8px 5px 8px;
+    padding-top: 7px;
+    padding-bottom: 6px;
     border-bottom-width: 1px;
     border-bottom-color: rgba(128, 128, 128, 0.35);
+    background-color: rgba(128, 128, 128, 0.035);
 }
 
 .screenshot-catalog-body {
@@ -15,7 +17,8 @@
 .screenshot-catalog-navigator {
     min-width: 220px;
     border-right-width: 1px;
-    border-right-color: rgba(128, 128, 128, 0.35);
+    border-right-color: rgba(128, 128, 128, 0.55);
+    background-color: rgba(0, 0, 0, 0.035);
 }
 
 .screenshot-catalog-navigator--narrow {
@@ -30,11 +33,13 @@
 }
 
 .screenshot-catalog-navigator-contents {
-    padding: 2px 5px 8px 5px;
+    padding: 4px 6px 10px 6px;
 }
 
 .screenshot-catalog-navigator-toolbar {
-    padding: 3px 4px 1px 4px;
+    padding: 4px 5px 4px 5px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(128, 128, 128, 0.22);
 }
 
 .screenshot-catalog-category-header {
@@ -58,12 +63,12 @@
 }
 
 .screenshot-catalog-slot-row {
-    min-height: 29px;
+    min-height: 30px;
     flex-direction: row;
     align-items: center;
     margin-bottom: 1px;
     padding-left: 8px;
-    padding-right: 5px;
+    padding-right: 6px;
     background-color: rgba(128, 128, 128, 0.07);
 }
 
@@ -88,15 +93,23 @@
 }
 
 .screenshot-catalog-slot-armed {
-    width: 17px;
-    opacity: 0.75;
+    width: 39px;
+    margin-right: 3px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    border-radius: 2px;
+    background-color: rgba(70, 140, 215, 0.28);
+    color: rgb(135, 190, 250);
+    font-size: 8px;
+    -unity-font-style: bold;
     -unity-text-align: middle-center;
 }
 
 .screenshot-catalog-slot-status {
-    width: 20px;
+    width: 69px;
+    font-size: 9px;
     -unity-font-style: bold;
-    -unity-text-align: middle-center;
+    -unity-text-align: middle-right;
 }
 
 .screenshot-catalog-empty-message {
@@ -106,11 +119,12 @@
 }
 
 .screenshot-catalog-workspace-contents {
-    padding: 10px 12px 14px 12px;
+    padding: 12px 14px 18px 14px;
 }
 
 .screenshot-catalog-status-bar {
-    padding: 4px 8px;
+    padding: 4px 7px;
     border-top-width: 1px;
-    border-top-color: rgba(128, 128, 128, 0.35);
+    border-top-color: rgba(128, 128, 128, 0.5);
+    background-color: rgba(0, 0, 0, 0.08);
 }

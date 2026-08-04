@@ -645,6 +645,36 @@ namespace SkatanicStudios
         }
 
         [Test]
+        public void NavigatorStatusLabelsDoNotRelyOnColorOrSymbolsAlone()
+        {
+            Assert.That(ScreenshotCatalogWindow.GetNavigatorStatusLabel(ScreenshotCatalogStatus.Complete), Does.Contain("Complete"));
+            Assert.That(ScreenshotCatalogWindow.GetNavigatorStatusLabel(ScreenshotCatalogStatus.SourceReady), Does.Contain("Ready"));
+            Assert.That(ScreenshotCatalogWindow.GetNavigatorStatusLabel(ScreenshotCatalogStatus.Missing), Does.Contain("Missing"));
+            Assert.That(ScreenshotCatalogWindow.GetNavigatorStatusLabel(ScreenshotCatalogStatus.Invalid), Does.Contain("Invalid"));
+            Assert.That(ScreenshotCatalogWindow.GetNavigatorStatusLabel(ScreenshotCatalogStatus.Obsolete), Does.Contain("Obsolete"));
+        }
+
+        [Test]
+        public void FooterIdentifiesTheAssetItActuallyValidates()
+        {
+            ScreenshotCatalogRequirement requirement = new ScreenshotCatalogRequirement
+            {
+                workflow = ScreenshotAssetWorkflow.CaptureThenFinal
+            };
+            ScreenshotCatalogSlot slot = new ScreenshotCatalogSlot();
+            Texture2D source = new Texture2D(1, 1);
+            Texture2D final = new Texture2D(1, 1);
+            slot.activeSource = source;
+            slot.activeFinal = final;
+
+            Assert.That(ScreenshotCatalogWindow.GetReviewAssetRole(requirement, slot, source), Is.EqualTo("Active source"));
+            Assert.That(ScreenshotCatalogWindow.GetReviewAssetRole(requirement, slot, final), Is.EqualTo("Active final"));
+
+            Object.DestroyImmediate(source);
+            Object.DestroyImmediate(final);
+        }
+
+        [Test]
         public void WindowInitialSelectionPrefersInvalidAndPreservesExplicitSelection()
         {
             string imagePath = TestFolder + "/selection-invalid.png";
@@ -670,38 +700,6 @@ namespace SkatanicStudios
             window.EnsureSelectedSlot();
             Assert.That(window.SelectedRequirementId, Is.EqualTo("missing"));
 
-            Object.DestroyImmediate(window);
-            Object.DestroyImmediate(catalog);
-            Object.DestroyImmediate(template);
-        }
-
-        [Test]
-        public void NextMissingAdvancesAtSlotLevel()
-        {
-            ScreenshotTemplate template = ScriptableObject.CreateInstance<ScreenshotTemplate>();
-            ScreenshotCategoryDefinition categoryDefinition = new ScreenshotCategoryDefinition { id = "category", name = "Category" };
-            ScreenshotRequirementDefinition requirementDefinition = new ScreenshotRequirementDefinition
-            {
-                id = "requirement",
-                name = "Screenshot",
-                width = 16,
-                height = 16
-            };
-            requirementDefinition.slots.Add(new ScreenshotSlotDefinition { id = "first", name = "First", required = true });
-            requirementDefinition.slots.Add(new ScreenshotSlotDefinition { id = "second", name = "Second", required = true });
-            categoryDefinition.requirements.Add(requirementDefinition);
-            template.categories.Add(categoryDefinition);
-            ScreenshotCatalog catalog = ScriptableObject.CreateInstance<ScreenshotCatalog>();
-            ScreenshotCatalogUtility.InitializeCatalog(catalog, template);
-            ScreenshotCatalogCategory category = catalog.categories.Single();
-            ScreenshotCatalogRequirement requirement = category.requirements.Single();
-            ScreenshotCatalogWindow window = ScriptableObject.CreateInstance<ScreenshotCatalogWindow>();
-            window.SetCatalog(catalog);
-            window.SelectSlot(category, requirement, requirement.slots[0]);
-
-            window.SelectNextMissingSlot();
-
-            Assert.That(window.SelectedSlotId, Is.EqualTo("second"));
             Object.DestroyImmediate(window);
             Object.DestroyImmediate(catalog);
             Object.DestroyImmediate(template);
@@ -746,6 +744,9 @@ namespace SkatanicStudios
             source.SetCatalog(catalog);
             VisualElement navigator = source.rootVisualElement.Q("screenshot-catalog-navigator-contents");
             Assert.That(navigator.childCount, Is.GreaterThan(0));
+            Label navigatorStatus = navigator.Q<Label>(className: "screenshot-catalog-slot-status");
+            Assert.That(navigatorStatus, Is.Not.Null);
+            Assert.That(navigatorStatus.text, Does.Contain("Missing"));
             Assert.That(source.SelectedSlotId, Is.EqualTo("requirement-slot"));
             source.SettingsPageVisible = true;
             string json = EditorJsonUtility.ToJson(source);
